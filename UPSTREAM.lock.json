@@ -93,6 +93,16 @@
         "translations/translations8.chunk.js": "sha256:ed291e04f049ef7d925c946709515cf860a8a040bc8e5a65eb1118889c0de862",
         "translations/translations9.chunk.js": "sha256:56660859ea728bc779bbe95a9d5d6d933d82d204b0fa74f2861cc5ccdee5d4bb"
       }
+    },
+    "vendor-webtorrent": {
+      "version": "3.0.21",
+      "origin": "webtorrent 3.0.21 from npm (https://registry.npmjs.org/webtorrent/-/webtorrent-3.0.21.tgz). webtorrent.min.js is package/dist/webtorrent.min.js bundled via a stub entry (self.WebTorrent = default export) into a classic IIFE with syntax lowered to ES2017 via esbuild at vendor time (upstream dist is an ES module and ships optional chaining/nullish coalescing, needing Chromium 85+; see upstream/vendor/webtorrent/3.0.21/README.md). sw.min.js is package/dist/sw.min.js as published.",
+      "dir": "upstream/vendor/webtorrent/3.0.21",
+      "files": {
+        "vendor/webtorrent/3.0.21/README.md": "sha256:73e03097cc134d3fffe241ec3a903584bbcb00940f3e70cfdcd62a3261a57f40",
+        "vendor/webtorrent/3.0.21/sw.min.js": "sha256:9aa1f71d26b4d4eb51786baa575309ca550fdfd9c96842fe25a3b643f2173da2",
+        "vendor/webtorrent/3.0.21/webtorrent.min.js": "sha256:c19c4e2c4a02938cca5f860e0950ecfbbae602f6f7c3b65330ec14569768d183"
+      }
     }
   }
 }

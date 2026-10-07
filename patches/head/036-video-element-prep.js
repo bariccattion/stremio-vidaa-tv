@@ -39,6 +39,10 @@
 
     function warmStreamHost(streamUrl) {
         if (!streamUrl || streamUrl.indexOf('blob:') === 0 || streamUrl.indexOf('magnet:') === 0) return;
+        // WebTorrent stream URLs (patch 031) are same-origin <origin>/webtorrent/...
+        // served through the service worker — preconnect is pointless and a
+        // warm-up fetch would double-pull the torrent head.
+        if (streamUrl.indexOf('/webtorrent/') !== -1) return;
         try {
             var u = new URL(streamUrl);
             addPreconnect(u.origin);

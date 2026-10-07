@@ -6,6 +6,9 @@
  *   upstream/theater-1.9.2/*      pristine Theater 1.9.2 build (never hand-edited)
  *   upstream/core-web/<ver>/*     stremio-core-web worker + wasm (from npm)
  *   upstream/translations/*       translation chunks
+ *   upstream/vendor/webtorrent/   pinned webtorrent 3.0.21 bundles (see that
+ *                                 dir's README.md — min.js is re-bundled to a
+ *                                 classic ES2017 IIFE at vendor time)
  *   patches/custom/core.chunk.js  custom worker-factory shim (webpack chunk 9114)
  *   patches/chunk-edits/*.json    surgical {find, replace} ops applied to pristine
  *                                 chunks — each op must match EXACTLY once or the
@@ -111,6 +114,13 @@ for (const f of collectFiles(join(root, 'upstream', 'translations'), join(root, 
   for (const f of collectFiles(coreDir, coreDir)) copyIn(f.abs, f.rel);
 }
 copyIn(join(root, 'patches', 'custom', 'core.chunk.js'), 'core.chunk.js');
+
+// Pinned WebTorrent (loaded by patch 031; sw.min.js is importScripts'd by the
+// app service worker for its streaming server). Explicit copies, not a
+// collectFiles sweep — the vendor dir's README.md is documentation, not a
+// shipped asset.
+copyIn(join(root, 'upstream', 'vendor', 'webtorrent', '3.0.21', 'webtorrent.min.js'), 'webtorrent.min.js');
+copyIn(join(root, 'upstream', 'vendor', 'webtorrent', '3.0.21', 'sw.min.js'), 'webtorrent-sw.min.js');
 
 // The installer UI is part of the deployed site (the DNS-spoof flow and the
 // installer/ README reference it over HTTP), so it ships in app/ as well.

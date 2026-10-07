@@ -191,6 +191,19 @@ This build includes fixes and features that go above and beyond what standard st
 |---|---|
 | **Prefetch next episode** ([#15](https://github.com/NoobyGains/stremio-vidaa-tv/issues/15)) | When watching a series, automatically fires a background fetch for the next episode's stream URL to warm the streaming server cache and reduce load time. |
 
+### Direct Torrent Streaming (Experimental) ([#16](https://github.com/NoobyGains/stremio-vidaa-tv/issues/16))
+
+Streams magnet links from torrent addons directly in the browser via [WebTorrent](https://webtorrent.io) — no streaming server, no debrid. **Off by default**; enable it in Settings ▸ Torrent Streaming.
+
+**Set honest expectations: this is a last-resort path, not a debrid replacement.** A browser can only discover torrent peers over WebRTC, and almost nothing seeds over WebRTC. **We measured 0/40 popular Torrentio torrents with any WebRTC-capable peers (Oct 2026).** Unless a torrent has a web seed (archive.org-style), playback simply cannot start. For reliable streaming, use Real-Debrid with Torrentio or run a [Stremio streaming server](#streaming-server-optional).
+
+How it works in this build:
+
+- **webtorrent 3.0.21, pinned and vendored** — `upstream/vendor/webtorrent/3.0.21/`, syntax-lowered to ES2017 so older TV browsers can parse it. Nothing is fetched from a CDN at play time (the old floating `webtorrent@latest` CDN load was unreliable and is gone).
+- **Progressive streaming, not buffering** — playback goes through webtorrent's service-worker streaming server (`file.streamTo`), so the first frame starts long before the file finishes downloading. (Earlier builds used `getBlobURL()`, which buffered the *entire file into RAM* before playing.)
+- **Trackers: `wss://tracker.webtorrent.dev` and `wss://open.ftorrent.com`** — the two live entries in the auto-updated public WSS tracker lists. `wss://tracker.btorrent.xyz` is dead and `wss://tracker.openwebtorrent.com` is intermittent (current status: [checker.openwebtorrent.com](https://checker.openwebtorrent.com/)).
+- **Honest failure story** — if zero peers connect within ~30 seconds, a dismissible message says the torrent isn't web-seeded and points at debrid / a streaming server, instead of an eternal "Connecting to peers…".
+
 ### Existing VIDAA-Specific Features
 
 These were already in the build before the above patches:

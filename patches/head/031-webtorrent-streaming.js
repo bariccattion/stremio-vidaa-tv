@@ -1,5 +1,18 @@
 // #16 — WebTorrent in-browser torrent streaming (Experimental)
-// Intercepts magnet: URIs from torrent addons and streams them via WebTorrent.
+// Intercepts magnet: URIs from torrent addons and streams them via the pinned,
+// vendored webtorrent 3.0.21 (upstream/vendor/webtorrent/3.0.21) using its
+// service-worker streaming server: file.streamTo() progressive playback —
+// the first frame plays long before the file finishes downloading. The old
+// getBlobURL() primary path buffered the ENTIRE file into RAM before playing
+// (2 GB movie = OOM) and is gone.
+//
+// Streaming requires our app service worker (it importScripts the webtorrent
+// worker — a fetch event only reaches the SW controlling the page, so a
+// separate registration would displace the app shell worker).
+//
+// Honest failure story, per the 040-honest-stall precedent: ~30 s at 0 peers →
+// dismissible card ("no WebRTC-capable peers — isn't web-seeded; use debrid or
+// a streaming server") instead of an eternal "Connecting to peers...".
 // Settings toggle in Settings page, status overlay in player.
 (function() {
     'use strict';
@@ -8,21 +21,23 @@
     var LOG_PREFIX = '[torrent]';
     var MAX_BUFFER_MB = 100;
     var OVERLAY_HIDE_DELAY = 10000;
+    var PEER_STALL_TIMEOUT = 30000;
     var TRACKERS = [
         'wss://tracker.webtorrent.dev',
-        'wss://tracker.openwebtorrent.com',
-        'wss://tracker.btorrent.xyz'
+        'wss://open.ftorrent.com'
     ];
 
     // ─── State ────────────────────────────────────────────────────
     var clientLoaded = false;
     var clientLoading = false;
     var activeTorrent = null;
-    var activeBlobUrl = null;
     var overlayEl = null;
     var overlayTimer = null;
     var statsInterval = null;
     var lastInterceptedSrc = '';
+    var swRegistration = null;
+    var peerStallTimer = null;
+    var stallCardEl = null;
 
     function isEnabled() {
         try { return localStorage.getItem(LS_KEY) === 'true'; } catch(e) { return false; }
@@ -38,7 +53,7 @@
         console.log.apply(console, args);
     }
 
-    // ─── CDN Loader ───────────────────────────────────────────────
+    // ─── Library Loader (vendored + pinned, same origin — no CDN) ──
     function loadWebTorrentLib(cb) {
         if (window.WebTorrent) { clientLoaded = true; cb(null); return; }
         if (clientLoading) {
@@ -51,21 +66,53 @@
             return;
         }
         clientLoading = true;
-        log('Loading WebTorrent library from CDN...');
+        log('Loading vendored WebTorrent library...');
         var s = document.createElement('script');
-        s.src = 'https://cdn.jsdelivr.net/npm/webtorrent@latest/webtorrent.min.js';
+        s.src = './webtorrent.min.js';
         s.onload = function() {
-            clientLoaded = true;
             clientLoading = false;
-            log('WebTorrent library loaded successfully');
-            cb(null);
+            if (window.WebTorrent) {
+                clientLoaded = true;
+                log('WebTorrent library loaded successfully');
+                cb(null);
+            } else {
+                cb(new Error('webtorrent.min.js evaluated but window.WebTorrent missing'));
+            }
         };
         s.onerror = function() {
             clientLoading = false;
-            log('Failed to load WebTorrent library');
-            cb(new Error('Failed to load WebTorrent from CDN'));
+            log('Failed to load vendored WebTorrent library');
+            cb(new Error('Failed to load webtorrent.min.js'));
         };
         document.head.appendChild(s);
+    }
+
+    // ─── Service Worker Streaming Server ──────────────────────────
+    // file.streamTo/streamURL require client.createServer({ controller: reg })
+    // with the app shell's service worker registration (patch 004 registers
+    // './sw.js'; the webtorrent worker is importScripts'd inside it).
+    function ensureStreamingServer(cb) {
+        if (!navigator.serviceWorker) {
+            cb(new Error('ServiceWorker unsupported in this browser'));
+            return;
+        }
+        navigator.serviceWorker.ready.then(function(reg) {
+            swRegistration = reg;
+            var client = getClient();
+            if (!client) { cb(new Error('Cannot create WebTorrent client')); return; }
+            if (client._server) { cb(null); return; }
+            try {
+                client.createServer({ controller: reg });
+                log('Streaming server created');
+                cb(null);
+            } catch(e) {
+                log('createServer failed:', e.message);
+                cb(e);
+            }
+        }).catch(function(err) {
+            log('serviceWorker.ready failed:', err && err.message);
+            cb(err);
+        });
     }
 
     // ─── Client Management ────────────────────────────────────────
@@ -87,15 +134,13 @@
 
     function destroyClient() {
         if (statsInterval) { clearInterval(statsInterval); statsInterval = null; }
+        cancelPeerStallWatchdog();
         if (activeTorrent) {
             try { activeTorrent.destroy(); } catch(e) {}
             activeTorrent = null;
         }
-        if (activeBlobUrl) {
-            try { URL.revokeObjectURL(activeBlobUrl); } catch(e) {}
-            activeBlobUrl = null;
-        }
         if (window.__webtorrentClient) {
+            try { if (window.__webtorrentClient._server) window.__webtorrentClient._server.close(); } catch(e) {}
             try { window.__webtorrentClient.destroy(); } catch(e) {}
             window.__webtorrentClient = null;
         }
@@ -147,6 +192,59 @@
         overlayEl.style.opacity = '1';
     }
 
+    // ─── Honest Failure Card ──────────────────────────────────────
+    // 040-honest-stall pattern: small dismissible corner card with a
+    // focusable button — never a fullscreen trap, never auto-skip. No
+    // autofocus (would hijack D-pad navigation on TV remotes); auto-removes.
+    function showHonestCard(text) {
+        removeStallCard();
+        var card = document.createElement('div');
+        card.id = 'webtorrent-honest-card';
+        card.style.cssText = 'position:fixed;bottom:60px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.85);color:#fff;font-family:PlusJakartaSans,sans-serif;font-size:0.9rem;line-height:1.45;padding:14px 18px;border-radius:10px;z-index:99999;max-width:420px;text-align:center;box-shadow:0 4px 16px rgba(0,0,0,0.5);';
+        card.textContent = text;
+        var btn = document.createElement('button');
+        btn.textContent = 'Dismiss';
+        btn.setAttribute('tabindex', '0');
+        btn.style.cssText = 'display:block;margin:10px auto 0;padding:6px 18px;background:#7b5bf5;color:#fff;border:none;border-radius:6px;font-family:inherit;font-size:0.85rem;cursor:pointer;';
+        btn.onclick = removeStallCard;
+        card.appendChild(btn);
+        document.body.appendChild(card);
+        stallCardEl = card;
+        setTimeout(function() { removeStallCard(); }, 14000);
+    }
+
+    function removeStallCard() {
+        if (stallCardEl) {
+            try { stallCardEl.remove(); } catch(e) {}
+            stallCardEl = null;
+        }
+    }
+
+    // ─── Peer-Stall Watchdog ──────────────────────────────────────
+    // Raw torrents without web seeds (and with only non-WebRTC peers) can
+    // never connect from a browser. Say so after ~30 s instead of letting the
+    // overlay lie with "Connecting to peers..." forever. Cancels itself the
+    // moment any peer connects — late recovery always wins.
+    function armPeerStallWatchdog() {
+        cancelPeerStallWatchdog();
+        peerStallTimer = setTimeout(function() {
+            peerStallTimer = null;
+            if (!activeTorrent || activeTorrent.destroyed) return;
+            if ((activeTorrent.numPeers || 0) > 0) return;
+            log('No peers after ' + (PEER_STALL_TIMEOUT / 1000) + 's — torrent is not web-seeded');
+            if (overlayEl) {
+                overlayEl.textContent = 'No peers \u2014 not web-seeded';
+                overlayEl.style.opacity = '1';
+            }
+            showHonestCard("This torrent has no WebRTC-capable peers \u2014 it isn't web-seeded. Use debrid or a streaming server.");
+        }, PEER_STALL_TIMEOUT);
+    }
+
+    function cancelPeerStallWatchdog() {
+        if (peerStallTimer) { clearTimeout(peerStallTimer); peerStallTimer = null; }
+        removeStallCard();
+    }
+
     // ─── Magnet Detection & Streaming ─────────────────────────────
     function isMagnet(url) {
         return typeof url === 'string' && url.indexOf('magnet:') === 0;
@@ -188,43 +286,49 @@
                 showDisabledMessage();
                 return;
             }
-            var client = getClient();
-            if (!client) {
-                log('Cannot create WebTorrent client');
-                return;
-            }
+            ensureStreamingServer(function(err) {
+                if (err) {
+                    log('Cannot start streaming server:', err.message);
+                    if (overlayEl) overlayEl.textContent = 'Torrent streaming unavailable';
+                    showHonestCard('Torrent streaming is not available in this browser. Use debrid or a streaming server.');
+                    return;
+                }
+                var client = getClient();
 
-            // Destroy previous torrent if any
-            if (activeTorrent) {
-                try { activeTorrent.destroy(); } catch(e) {}
-                activeTorrent = null;
-            }
-            if (activeBlobUrl) {
-                try { URL.revokeObjectURL(activeBlobUrl); } catch(e) {}
-                activeBlobUrl = null;
-            }
+                // Destroy previous torrent if any
+                if (activeTorrent) {
+                    try { activeTorrent.destroy(); } catch(e) {}
+                    activeTorrent = null;
+                }
 
-            createOverlay();
-            overlayEl.textContent = 'Connecting to peers...';
+                createOverlay();
+                overlayEl.textContent = 'Connecting to peers...';
 
-            // Check if torrent already added
-            var existing = client.get(magnetURI);
-            if (existing) {
-                handleTorrent(existing, videoEl);
-                return;
-            }
+                // Check if torrent already added
+                var existing = client.get(magnetURI);
+                if (existing) {
+                    handleTorrent(existing, videoEl);
+                    return;
+                }
 
-            client.add(magnetURI, {
-                announce: TRACKERS,
-                strategy: 'sequential'
-            }, function(torrent) {
-                handleTorrent(torrent, videoEl);
+                // client.add returns the torrent synchronously — keep a
+                // reference so cleanup and the stall watchdog cover the
+                // metadata phase too, not just post-ready.
+                var torrent = client.add(magnetURI, {
+                    announce: TRACKERS,
+                    strategy: 'sequential'
+                }, function(t) {
+                    handleTorrent(t, videoEl);
+                });
+                activeTorrent = torrent;
+                armPeerStallWatchdog();
             });
         });
     }
 
     function handleTorrent(torrent, videoEl) {
         activeTorrent = torrent;
+        armPeerStallWatchdog();
         log('Torrent ready:', torrent.name, '| Files:', torrent.files.length);
 
         // Find largest file (the video)
@@ -240,28 +344,31 @@
         torrent.files.forEach(function(f) { try { f.deselect(); } catch(e) {} });
         try { videoFile.select(); } catch(e) {}
 
-        // Get blob URL and set video source
-        videoFile.getBlobURL(function(err, url) {
-            if (err) {
-                log('Failed to get blob URL:', err.message);
-                // Fallback: try streaming via renderTo
-                try {
-                    videoFile.renderTo(videoEl, { autoplay: true }, function(err2) {
-                        if (err2) log('renderTo also failed:', err2.message);
-                        else log('Streaming via renderTo');
-                    });
-                } catch(e2) {
-                    log('All streaming methods failed');
-                }
-                return;
+        // Progressive streaming — first frame long before the file completes.
+        function streamFailed(err) {
+            if (err) log('Streaming failed:', err.message);
+            if (overlayEl) overlayEl.textContent = "Can't stream this file";
+            showHonestCard("Can't stream this file in the TV browser (codec/container). Try another source, or use debrid / a streaming server.");
+        }
+        try {
+            if (typeof videoFile.streamTo === 'function') {
+                videoFile.streamTo(videoEl, function(err) {
+                    if (err) { streamFailed(err); return; }
+                    log('Streaming started via streamTo');
+                    videoEl.play().catch(function() {});
+                });
+            } else if (videoFile.streamURL) {
+                log('streamTo unavailable — falling back to streamURL');
+                videoEl.src = videoFile.streamURL;
+                videoEl.play().catch(function() {});
+            } else {
+                streamFailed(new Error('no streamTo/streamURL on file'));
             }
-            activeBlobUrl = url;
-            videoEl.src = url;
-            videoEl.play().catch(function() {});
-            log('Streaming started via blob URL');
-        });
+        } catch(e) {
+            streamFailed(e);
+        }
 
-        // Stats overlay update
+        // Stats overlay update + peer recovery + memory pressure
         if (statsInterval) clearInterval(statsInterval);
         statsInterval = setInterval(function() {
             if (!activeTorrent || activeTorrent.destroyed) {
@@ -271,20 +378,8 @@
             }
             updateOverlayStats(torrent);
 
-            // Memory management: deselect already-played pieces
-            if (videoEl.currentTime > 0 && videoFile.length > 0) {
-                try {
-                    var playedRatio = videoEl.currentTime / (videoEl.duration || 1);
-                    var playedBytes = Math.floor(playedRatio * videoFile.length);
-                    // Rough piece calculation — deselect old pieces to free memory
-                    if (torrent.pieceLength && playedBytes > torrent.pieceLength * 10) {
-                        var playedPieces = Math.floor(playedBytes / torrent.pieceLength);
-                        for (var p = 0; p < playedPieces - 5; p++) {
-                            try { torrent.deselect(p, p, false); } catch(e) {}
-                        }
-                    }
-                } catch(e) {}
-            }
+            // Peers showed up after the honest message — revert to live stats.
+            if ((torrent.numPeers || 0) > 0) cancelPeerStallWatchdog();
 
             // Memory pressure check
             try {

@@ -1,6 +1,16 @@
 var CACHE_NAME = '{{CACHE_NAME}}';
 var ASSETS = {{ASSETS}};
 
+// WebTorrent's streaming-server service worker (pinned + vendored, see
+// upstream/vendor/webtorrent/3.0.21/README.md). A fetch event only ever
+// reaches the SW controlling the page, so its fetch listener must live HERE —
+// registering dist/sw.min.js separately (its docs' scope './' suggestion)
+// would displace this app shell worker. It only respondWith()s URLs under
+// <scope>webtorrent/; everything else passes through to our handler below.
+// Optional: if the script is missing the app shell works, torrent streaming
+// just stays unavailable.
+try { importScripts('./webtorrent-sw.min.js'); } catch (e) { /* torrent streaming unavailable */ }
+
 self.addEventListener('install', function(e) {
   e.waitUntil(
     caches.open(CACHE_NAME).then(function(cache) {
@@ -28,6 +38,11 @@ self.addEventListener('fetch', function(e) {
   var req = e.request;
   if (req.method !== 'GET') return;
   if (req.url.indexOf(self.location.origin) !== 0) return;
+
+  // WebTorrent streaming URLs (<origin>/webtorrent/...) belong to the
+  // importScripts'd webtorrent worker above. Plain return — never
+  // respondWith and never cache a media stream into the app shell cache.
+  if (new URL(req.url).pathname.indexOf('/webtorrent') === 0) return;
 
   // Never touch media range requests. If we ever served video from the
   // same origin and this handler intercepted, Range semantics break and
