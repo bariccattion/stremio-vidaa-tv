@@ -1,0 +1,103 @@
+name: CI (site)
+
+# Runs — and deploys — only when something that feeds the built app/ changes.
+# Kept separate from CI (tests) so the two never share a concurrency group:
+# a test/docs-only push must not cancel an in-flight site run, or its deploy
+# is lost and nothing ever redoes it.
+on:
+  pull_request:
+    paths:
+      - 'upstream/**'
+      - 'patches/**'
+      - 'installer/**'
+      - 'scripts/build.mjs'
+      - 'UPSTREAM.lock.json'
+      - 'package.json'
+      - 'package-lock.json'
+  push:
+    branches: [development]
+    paths:
+      - 'upstream/**'
+      - 'patches/**'
+      - 'installer/**'
+      - 'scripts/build.mjs'
+      - 'UPSTREAM.lock.json'
+      - 'package.json'
+      - 'package-lock.json'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Build site + run test suite
+        run: npx playwright test
+
+      - name: WASM core boot probe
+        run: node scripts/probe-core.mjs
+
+      - name: Upload test results on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-site
+          path: |
+            test-results/
+            playwright-report/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  deploy:
+    needs: test
+    # Every deploy rewrites the sw.js cache name with the new commit,
+    # cache-busting every installed TV — so only real pushes to development
+    # ship (never PRs, never manual dispatches).
+    if: github.event_name == 'push' && github.ref == 'refs/heads/development'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build site
+        run: node scripts/build.mjs
+
+      - name: Deploy to gh-pages branch
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./app
+          force_orphan: true
+          commit_message: 'Deploy site from ${{ github.sha }}'

@@ -1,0 +1,67 @@
+name: CI (tests)
+
+# Test-only workflow: runs when the test suite, the probe, the workflow
+# definitions, or Playwright config change — and never deploys. Deliberately
+# separate from CI (site) so it can't cancel or delay an in-flight deploy.
+on:
+  pull_request:
+    paths:
+      - 'tests/**'
+      - 'playwright.config.js'
+      - 'scripts/probe-core.mjs'
+      - '.github/workflows/**'
+  push:
+    branches: [development]
+    paths:
+      - 'tests/**'
+      - 'playwright.config.js'
+      - 'scripts/probe-core.mjs'
+      - '.github/workflows/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Build site + run test suite
+        run: npx playwright test
+
+      - name: WASM core boot probe
+        run: node scripts/probe-core.mjs
+
+      - name: Upload test results on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-tests
+          path: |
+            test-results/
+            playwright-report/
+          if-no-files-found: ignore
+          retention-days: 7
