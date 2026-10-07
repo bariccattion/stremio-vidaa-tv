@@ -49,8 +49,11 @@ node scripts/sync-translations.mjs
 node scripts/build.mjs --update-lock
 
 # 4. Verify
-npx playwright test          # 117 tests against the freshly built app/
-node scripts/probe-core.mjs  # boots the site headlessly; confirms the WASM core initializes
+npx playwright test            # 117 tests against the freshly built app/
+node scripts/probe-core.mjs    # boots the site headlessly; confirms the WASM core initializes
+node scripts/probe-server.mjs  # boots with a mock streaming server; confirms ?server= sync,
+                                # StreamingServer.Reload, and the core's server client (all
+                                # resources must reach Ready)
 
 # 5. Manual TV smoke checklist (before deploying — the suite can't cover real hardware)
 #    login · browse Board/Discover/Search · play a Real-Debrid stream · subtitles
