@@ -91,12 +91,16 @@ test.describe('Native Edit URL dialog integration (patch 043)', () => {
     await page.goto('/');
     await page.waitForTimeout(1500);
     await page.evaluate(() => window.__serverDialogTest('http://10.255.255.1:11470'));
-    await new Promise((r) => setTimeout(r, 4000)); // TEST_TIMEOUT_MS = 3000
+    // Probe timeout (3s) + heartbeat fallback timeout (3s) + margin.
+    await new Promise((r) => setTimeout(r, 7500));
     const text = await page.evaluate(() => {
       var el = document.getElementById('dv-server-toast');
       return el ? el.textContent : '';
     });
-    expect(text).toMatch(/not reachable|timed out/i);
+    expect(text).toMatch(/could not verify|timed out/i);
+    // Calm wording: no alarming "not reachable" claim when we simply
+    // couldn't verify, and the retry promise is stated.
+    expect(text).toMatch(/saved and will be retried/i);
   });
 
   test('Auto-Detect fills the dialog field with the found server, user still confirms', async ({ page }) => {
@@ -188,5 +192,131 @@ test.describe('Native Edit URL dialog integration (patch 043)', () => {
     const src = fs.readFileSync('app/main.js', 'utf8');
     expect(src).toContain('<input type=text autocomplete=off autocorrect=off autocapitalize=off>');
     expect(src).not.toContain('"<input type=text>";');
+  });
+});
+
+// ==========================================================================
+// False-Offline healing + honest status surfaces
+// ---------------------------------------------------------------------------
+// The core checks the streaming server ONCE with no retry; one failed check
+// sticks as "Offline" while the server works. Fixes under test:
+//   • patch 013 heals the core (rate-limited StreamingServer/Reload) when the
+//     page-level probe says online but the core has no baseUrl
+//   • the SERVER settings row accepts the page-level health as online evidence
+//   • the Confirm toast falls back to /heartbeat and never cries wolf
+//   • patch 006 mirrors core URL changes to localStorage on every screen
+// ==========================================================================
+test.describe('False-Offline healing and honest status', () => {
+  function installMockCore(page, initialState) {
+    return page.addInitScript((state) => {
+      window.__ssState = state;
+      window.__ctxUrl = null;
+      window.__mockDispatchLog = [];
+      window.__mockCore = {
+        getState: function (model) {
+          if (model === 'streaming_server') {
+            return Promise.resolve({ baseUrl: window.__ssState.baseUrl, selected: { transportUrl: window.__ssState.transportUrl } });
+          }
+          if (model === 'ctx') {
+            return Promise.resolve(window.__ctxUrl ? { profile: { settings: { streamingServerUrl: window.__ctxUrl } } } : null);
+          }
+          return Promise.resolve(null);
+        },
+        dispatch: function (action) { window.__mockDispatchLog.push(JSON.stringify(action)); return Promise.resolve(); }
+      };
+      Object.defineProperty(window, 'core', { get: function () { return window.__mockCore; }, set: function () {}, configurable: true });
+    }, initialState);
+  }
+
+  test('heal: page-healthy + core-offline triggers exactly one rate-limited Reload', async ({ page }) => {
+    await page.route(/\/settings/, (route) => route.fulfill({ status: 200, contentType: 'application/json', body: MOCK_SETTINGS }));
+    await installMockCore(page, { baseUrl: null, transportUrl: 'http://127.0.0.1:11470' });
+    await page.goto('/');
+    // Initial health check runs at 3s and heals on success.
+    await page.waitForTimeout(5000);
+    const first = await page.evaluate(() => (window.__mockDispatchLog || []).filter(function (e) { return e.indexOf('"Reload"') !== -1; }).length);
+    expect(first).toBeGreaterThanOrEqual(1);
+    // Next cycle (~13s) must be blocked by the 60s rate limit.
+    await page.waitForTimeout(11000);
+    const second = await page.evaluate(() => (window.__mockDispatchLog || []).filter(function (e) { return e.indexOf('"Reload"') !== -1; }).length);
+    expect(second).toBe(first);
+  });
+
+  test('no heal when the core already reports online', async ({ page }) => {
+    await page.route(/\/settings/, (route) => route.fulfill({ status: 200, contentType: 'application/json', body: MOCK_SETTINGS }));
+    await installMockCore(page, { baseUrl: 'http://127.0.0.1:11470', transportUrl: 'http://127.0.0.1:11470' });
+    await page.goto('/');
+    await page.waitForTimeout(5000);
+    const reloads = await page.evaluate(() => (window.__mockDispatchLog || []).filter(function (e) { return e.indexOf('"Reload"') !== -1; }).length);
+    expect(reloads).toBe(0);
+  });
+
+  test('no heal when the page-level probe also fails', async ({ page }) => {
+    await page.route(/heartbeat|\/settings/, (route) => route.abort());
+    await installMockCore(page, { baseUrl: null, transportUrl: 'http://127.0.0.1:11470' });
+    await page.goto('/');
+    await page.waitForTimeout(5000);
+    const reloads = await page.evaluate(() => (window.__mockDispatchLog || []).filter(function (e) { return e.indexOf('"Reload"') !== -1; }).length);
+    expect(reloads).toBe(0);
+  });
+
+  test('SERVER row accepts the page-level health probe as online evidence', () => {
+    const src = fs.readFileSync('app/settings.chunk.js', 'utf8');
+    expect(src).toContain('f.online() || (window.__SERVER_HEALTH__');
+    expect(src).toContain('window.__SERVER_HEALTH__.status === "online"');
+    expect(src).toContain('MOBILE_SERVER_OFFLINE');
+  });
+
+  test('toast falls back to /heartbeat before reporting failure', async ({ page }) => {
+    await page.route(/\/settings/, (route) => route.abort());
+    await page.route(/heartbeat/, (route) => route.fulfill({ status: 200, body: 'ok' }));
+    await page.goto('/');
+    await page.waitForTimeout(1500);
+    await page.evaluate(() => window.__serverDialogTest('http://helper.test:11470'));
+    const text = await page.evaluate(async () => {
+      var start = Date.now();
+      while (Date.now() - start < 8000) {
+        var el = document.getElementById('dv-server-toast');
+        var t = el ? (el.textContent || '') : '';
+        if (t && !/checking/i.test(t)) return t;
+        await new Promise((r) => setTimeout(r, 100));
+      }
+      return '';
+    });
+    expect(text).toMatch(/reachable/i);
+    expect(text).toMatch(/heartbeat/i);
+  });
+
+  test('mixed-content hint only for https page + http server', async ({ page }) => {
+    await page.goto('/');
+    await page.waitForTimeout(1500);
+    const hints = await page.evaluate(() => ({
+      httpsHttp: window.__mixedContentHint('https:', 'http://192.168.1.5:11470'),
+      httpHttp: window.__mixedContentHint('http:', 'http://192.168.1.5:11470'),
+      httpsHttps: window.__mixedContentHint('https:', 'https://192.168.1.5:11470')
+    }));
+    expect(hints.httpsHttp.length).toBeGreaterThan(0);
+    expect(hints.httpsHttp).toMatch(/playback still works|http installer/i);
+    expect(hints.httpHttp).toBe('');
+    expect(hints.httpsHttps).toBe('');
+  });
+
+  test('patch 006 mirrors core URL changes to localStorage on every screen', async ({ page }) => {
+    await installMockCore(page, { baseUrl: null, transportUrl: 'http://192.168.1.10:11470' });
+    // Baseline URL must exist before the first effective poll (after the 10s
+    // warmup); init scripts run in order, so this overrides the mock's null.
+    await page.addInitScript(() => { window.__ctxUrl = 'http://192.168.1.10:11470'; });
+    await page.goto('/#/library');
+    await page.waitForTimeout(11000); // warmup + baseline poll
+    await page.evaluate(() => { window.__ctxUrl = 'http://192.168.1.99:11470'; });
+    await page.waitForTimeout(4000); // next 2s poll picks up the change
+    const result = await page.evaluate(() => ({
+      ls: localStorage.getItem('stremio_server_url'),
+      global: window.__STREMIO_SERVER_URL__,
+      reloads: (window.__mockDispatchLog || []).filter(function (e) { return e.indexOf('"Reload"') !== -1; }).length
+    }));
+    expect(result.ls).toBe('http://192.168.1.99:11470');
+    expect(result.global).toBe('http://192.168.1.99:11470');
+    expect(result.reloads).toBeGreaterThanOrEqual(1);
   });
 });

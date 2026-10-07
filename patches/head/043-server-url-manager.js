@@ -197,6 +197,30 @@
 
     // ── Confirm-time ping (called by the chunk-edited native dialog right
     // after it commits the URL). Pure feedback — the URL is already saved. ──
+    // /settings can fail for reasons that don't affect usability (older
+    // server builds, response shapes) — fall back to a /heartbeat liveness
+    // check, the same one the health monitor uses, before reporting failure.
+    function heartbeatOk(url, cb) {
+        var done = false;
+        var ctrl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+        var t = setTimeout(function() { if (ctrl) { try { ctrl.abort(); } catch (e) {} } if (!done) { done = true; cb(false); } }, TEST_TIMEOUT_MS);
+        try {
+            fetch(url + '/heartbeat', ctrl ? { signal: ctrl.signal } : undefined)
+                .then(function(r) { if (done) return; done = true; clearTimeout(t); cb(r.ok); })
+                .catch(function() { if (done) return; done = true; clearTimeout(t); cb(false); });
+        } catch (e) { if (!done) { done = true; clearTimeout(t); cb(false); } }
+    }
+
+    // TV browsers can block fetch checks from an https page to an http LAN
+    // server (mixed content) while <video> playback still works. Exposed for
+    // tests.
+    window.__mixedContentHint = function(pageProtocol, serverUrl) {
+        if (pageProtocol === 'https:' && /^http:\/\//i.test(serverUrl)) {
+            return ' Note: TV browsers can block checks from an https page to an http server while playback still works — for full server integration, install the app via the http installer.';
+        }
+        return '';
+    };
+
     window.__serverDialogTest = function(url) {
         if (!url) return;
         var t0 = Date.now();
@@ -204,9 +228,16 @@
         probe(url, function(res) {
             if (res.reachable) {
                 toast('✓ Streaming server reachable (' + res.note + ', ' + (Date.now() - t0) + ' ms)');
-            } else {
-                toast('✗ Streaming server not reachable (' + res.note + '). The address is saved and will be retried.');
+                return;
             }
+            heartbeatOk(url, function(ok) {
+                if (ok) {
+                    toast('✓ Streaming server reachable (heartbeat, ' + (Date.now() - t0) + ' ms)');
+                    return;
+                }
+                var hint = window.__mixedContentHint(window.location.protocol, url);
+                toast('⚠ Could not verify ' + url + ' (' + res.note + '). The address is saved and will be retried.' + hint);
+            });
         }, TEST_TIMEOUT_MS);
     };
 
