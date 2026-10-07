@@ -6,7 +6,7 @@
 // - HEVC 4K 10-bit: plays fine
 // - AV1: not supported
 // NOTE: Other TVs may have different codec support — users can disable
-// the playback warning via Settings > STREMIO TV > Playback Warning
+// the playback warning via Settings > Vidaa TV > Playback Warning
 (function() {
     var WARN_KEY = 'stremio_playback_warning';
     window.__DV_PROFILE7_DETECTED__ = false;
@@ -14,7 +14,7 @@
 
     // Default OFF — do not block streams that look stalled, many eventually recover
     // and the full-screen overlay blocks the TV remote from navigating elsewhere.
-    // Users who want the codec/stall helper can opt in via Settings > STREMIO TV > Playback Warning.
+    // Users who want the codec/stall helper can opt in via Settings > Vidaa TV > Playback Warning.
     try { if (localStorage.getItem(WARN_KEY) === null) localStorage.setItem(WARN_KEY, 'false'); } catch(e) {}
 
     function isWarningEnabled() {

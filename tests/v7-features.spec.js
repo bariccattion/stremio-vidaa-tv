@@ -351,7 +351,7 @@ test.describe('Native VIDAA settings and handoff', () => {
       const response = await fetch('/settings.chunk.js');
       return response.text();
     });
-    expect(bundle).toContain('label: "STREMIO TV"');
+    expect(bundle).toContain('label: "Vidaa TV"');
     expect(bundle).toContain('Quiet Player Mode');
     expect(bundle).toContain('Auto Native Player for MKV');
     expect(bundle).toContain('Auto Native Player (all streams)');

@@ -22,8 +22,10 @@
     var MAX_BUFFER_MB = 100;
     var OVERLAY_HIDE_DELAY = 10000;
     var PEER_STALL_TIMEOUT = 30000;
+    // Synced from ngosang/trackerslist trackers_all_ws.txt @ 7f1b69b1a2c6 of 2026-09-29 (last bot update); synced 2026-10-07 by scripts/sync-trackers.mjs
     var TRACKERS = [
         'wss://tracker.webtorrent.dev',
+        'wss://tracker.openwebtorrent.com',
         'wss://open.ftorrent.com'
     ];
 

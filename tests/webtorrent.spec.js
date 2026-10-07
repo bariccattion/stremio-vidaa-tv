@@ -61,6 +61,20 @@ test('patch 031 wires streaming + trackers + honest failure story', () => {
   expect(patch).not.toContain('cdn.jsdelivr.net');
 });
 
+test('TRACKERS array is synced: provenance stamp, wss-only entries', () => {
+  const patch = read('patches/head/031-webtorrent-streaming.js');
+  expect(patch).toContain('// Synced from ngosang/trackerslist');
+  const block = patch.match(/var TRACKERS = \[([\s\S]*?)\];/);
+  expect(block).toBeTruthy();
+  const entries = block[1].split(',')
+    .map((s) => s.trim().replace(/^'|'$/g, ''))
+    .filter(Boolean);
+  expect(entries.length).toBeGreaterThan(0);
+  // Browsers can only announce to wss:// — udp/http trackers are native-client
+  // only and must never leak in from the upstream list.
+  for (const t of entries) expect(t.startsWith('wss://')).toBe(true);
+});
+
 test('companion patches exempt /webtorrent/ stream URLs', () => {
   // 038: handing a SW-served URL to the TV's native player app would break
   // playback (the native app isn't controlled by the service worker).

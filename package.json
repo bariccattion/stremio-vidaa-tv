@@ -6,7 +6,8 @@
   "main": "main.js",
   "scripts": {
     "build": "node scripts/build.mjs",
-    "test": "playwright test"
+    "test": "playwright test",
+    "sync-trackers": "node scripts/sync-trackers.mjs"
   },
   "repository": {
     "type": "git",

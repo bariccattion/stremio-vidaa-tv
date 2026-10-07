@@ -404,7 +404,7 @@
         });
     }, 1000);
 
-    // The Settings ▸ STREMIO TV "Diagnostics" row is hardcoded in
+    // The Settings ▸ Vidaa TV "Diagnostics" row is hardcoded in
     // settings.chunk.js to call window.__showVidaaDiagnostics. To make the new
     // screenshot-friendly buffering diagnostic reachable from Settings WITHOUT
     // editing that bundle, we extend this existing entry point: it still shows

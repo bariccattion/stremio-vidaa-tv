@@ -34,6 +34,7 @@ Stremio-published components are:
 |---|---|---|
 | Engine | `@stremio/stremio-core-web` on npm (MIT) | 0.64.1 |
 | Translations | [Stremio/stremio-translations](https://github.com/Stremio/stremio-translations) | master, synced 2026-10-07 |
+| WebTorrent trackers | [ngosang/trackerslist](https://github.com/ngosang/trackerslist) websocket list | master, synced 2026-10-07 |
 | TV frontend | none — frozen at Theater 1.9.2 | — |
 
 ## Sync procedure
@@ -45,22 +46,26 @@ node scripts/sync-core.mjs --version 0.64.1
 # 2. Translations (prints a per-language merge report)
 node scripts/sync-translations.mjs
 
-# 3. Rebuild (refreshes UPSTREAM.lock.json hashes after intentional changes)
+# 3. WebTorrent trackers (rewrites the TRACKERS array in patch 031; only the
+#    repo's wss:// websocket list applies — udp/http announce is browser-unusable)
+npm run sync-trackers
+
+# 4. Rebuild (refreshes UPSTREAM.lock.json hashes after intentional changes)
 node scripts/build.mjs --update-lock
 
-# 4. Verify
-npx playwright test            # 117 tests against the freshly built app/
+# 5. Verify
+npx playwright test            # 121 tests against the freshly built app/
 node scripts/probe-core.mjs    # boots the site headlessly; confirms the WASM core initializes
 node scripts/probe-server.mjs  # boots with a mock streaming server; confirms ?server= sync,
                                 # StreamingServer.Reload, and the core's server client (all
                                 # resources must reach Ready)
 
-# 5. Manual TV smoke checklist (before deploying — the suite can't cover real hardware)
+# 6. Manual TV smoke checklist (before deploying — the suite can't cover real hardware)
 #    login · browse Board/Discover/Search · play a Real-Debrid stream · subtitles
 #    on/off/size/language · Yellow key native-player handoff · settings toggles
-#    (STREMIO TV category) · diagnostics panel (Green+Red) · exit button
+#    (Vidaa TV category) · diagnostics panel (Green+Red) · exit button
 
-# 6. Commit; CI re-runs the suite and deploys app/ to the gh-pages branch.
+# 7. Commit; CI re-runs the suite and deploys app/ to the gh-pages branch.
 ```
 
 ### If the new engine breaks the old UI

@@ -27,8 +27,8 @@ const NOTES = {
     'Trailing newline added to the minified file.',
   ],
   'settings.chunk.js': [
-    'STREMIO TV label row added to the Settings navigation list.',
-    'Hand-written STREMIO TV settings section: readBool/writeBool/makeToggle helpers driving __registerVidaaSettingsItem/__registerCommunityToggle toggles.',
+    'Vidaa TV label row added to the Settings navigation list.',
+    'Hand-written Vidaa TV settings section: readBool/writeBool/makeToggle helpers driving __registerVidaaSettingsItem/__registerCommunityToggle toggles.',
   ],
 };
 
