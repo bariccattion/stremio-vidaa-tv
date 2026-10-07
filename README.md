@@ -10,8 +10,8 @@
 
 <p align="center">
   <a href="https://bariccattion.github.io/stremio-vidaa-tv/"><img src="https://img.shields.io/website?label=GitHub%20Pages&logo=github&up_message=online&down_message=offline&url=https%3A%2F%2Fbariccattion.github.io%2Fstremio-vidaa-tv%2F" alt="Pages status" /></a>
-  <img src="https://img.shields.io/badge/build-v7-orange" alt="Build version" />
-  <img src="https://img.shields.io/badge/core-stremio--core--web%20v5%20(0.55.0)-purple" alt="Core version" />
+  <img src="https://img.shields.io/badge/build-v8-orange" alt="Build version" />
+  <img src="https://img.shields.io/badge/core-stremio--core--web%200.64.1-purple" alt="Core version" />
   <img src="https://img.shields.io/badge/platform-VIDAA%20OS-green" alt="Platform" />
   <a href="https://github.com/NoobyGains/stremio-vidaa-tv/stargazers"><img src="https://img.shields.io/github/stars/NoobyGains/stremio-vidaa-tv?style=social" alt="GitHub Stars" /></a>
 </p>
@@ -31,7 +31,7 @@ This project was originally built to get Stremio working on a **Hisense PX3-Pro 
 ## What you get
 
 - **Full Stremio**, not Lite — community addons (Torrentio, etc.), streaming server support, transcoding, external debrid services all work.
-- **Modern stremio-core v5 WASM engine** grafted onto the original Stremio Theater v1.9.2 TV frontend (built for D-pad navigation and 10-foot viewing distance — perfect for projectors).
+- **Modern stremio-core v5 WASM engine** (currently **0.64.1**, synced from Stremio's official releases) grafted onto the original Stremio Theater v1.9.2 TV frontend (built for D-pad navigation and 10-foot viewing distance — perfect for projectors).
 - **Projector-first defaults** — no full-screen error overlays blocking your remote, large UI sizing, Method 2 (bookmark) as the reliable install path.
 - **Every custom feature is a toggle** in Settings &gt; STREMIO TV so you can turn anything on or off per device.
 - **Reverse-engineered VIDAA integration** for native player handoff, hardware codec detection, trusted-domain registration, and launcher installation.
@@ -227,7 +227,7 @@ These were already in the build before the above patches:
 | **"Server Offline" in Settings** | Your streaming server must be running on a device on the same network. Test by visiting `http://<server-ip>:11470/heartbeat` in a browser. Most Real-Debrid users don't need a server at all. |
 | **Black screen during playback** | Could be: DV content in MP4 container (use MKV sources instead), content above 4K resolution, or an unsupported codec. The app detects stalled playback and offers options. |
 | **Playback stops after a few minutes** | Usually a server connection issue. If you don't use a streaming server, this shouldn't happen. If you do, check that the server URL is correct in Settings. |
-| **Search keyboard doesn't work** | Check the version number in the bottom-right corner. If it doesn't show v7, clear the browser cache or add `?v=new` to the URL. |
+| **Search keyboard doesn't work** | Check the version number in the bottom-right corner. If it doesn't show v8, clear the browser cache or add `?v=new` to the URL. |
 | **App shows old version** | The service worker may be caching an old copy. Go to Settings > Clear Data, or clear the TV browser cache. |
 | **720p UI is clipped** | The app auto-detects 720p viewports and applies zoom correction. If it's not working, your TV may report a non-standard viewport size. |
 
@@ -236,29 +236,48 @@ These were already in the build before the above patches:
 ```
 ┌──────────────────────────────────────────┐
 │  Stremio Theater v1.9.2 Frontend (UI)    │
-│  58 original chunks: home, discover,     │
-│  search, player, settings, library,      │
-│  addons, login, details, video, etc.     │
+│  upstream/theater-1.9.2 — 59 chunks:     │
+│  home, discover, search, player,         │
+│  settings, library, addons, video,       │
+│  47 translations, assets (untouched)     │
 ├──────────────────────────────────────────┤
-│  v7 Patch Layer (index.html)             │
-│  Server sync, codec detection, VIDAA API │
-│  integration, install-to-launcher, QoL   │
+│  VIDAA Patch Layer (patches/)            │
+│  42 ordered scripts inlined into         │
+│  index.html at build + 3 surgical chunk  │
+│  edits stored as data — server sync,     │
+│  codec detection, VIDAA API, launcher,   │
+│  remote keys, QoL toggles, diagnostics   │
 ├──────────────────────────────────────────┤
-│  v5 Core Bridge (core.chunk.js)          │
-│  External Worker loader → v5-worker.js   │
+│  stremio-core-web 0.64.1 WASM engine     │
+│  upstream/core-web — worker bundled from │
+│  the official npm package                │
 ├──────────────────────────────────────────┤
-│  stremio-core-web v5 WASM (0.55.0)      │
-│  stremio_core_web_bg.wasm                │
+│  Service Worker (generated sw.js)        │
+│  Caches the full app shell for instant   │
+│  TV boot                                │
 ├──────────────────────────────────────────┤
-│  Service Worker (sw.js)                  │
-│  Caches app shell for instant TV boot    │
+│  Build (scripts/build.mjs)               │
+│  upstream/ + patches/ → app/, hashes     │
+│  pinned in UPSTREAM.lock.json            │
 ├──────────────────────────────────────────┤
 │  One-Click Installer (installer/)        │
 │  DNS spoof + HTTPS server + auto-install │
 └──────────────────────────────────────────┘
 ```
 
-The v7 patch layer sits between the original UI and the core engine. All patches are isolated in `index.html` as self-contained scripts, with two surgical one-line edits in the bundled chunks for error handling and transcoding hooks. The WASM binary and original UI chunks are untouched.
+The patch layer sits between the original UI and the core engine. All patches are isolated in `patches/head/` as self-contained scripts (inlined into `index.html` at build time, in order), with three surgical edits to bundled chunks expressed as data in `patches/chunk-edits/` (error handling and transcoding hooks). The WASM binary and original UI chunks are untouched; every upstream file is verified by SHA-256 against `UPSTREAM.lock.json` on each build.
+
+## Development & Syncing
+
+The repo separates **replaceable Stremio artifacts** (`upstream/`, hash-locked) from **our VIDAA customizations** (`patches/`), assembled into the deployable site by `scripts/build.mjs`. To pick up a new stremio-core-web engine or fresh translations from Stremio:
+
+```bash
+node scripts/sync-core.mjs --version <x.y.z>   # engine from npm
+node scripts/sync-translations.mjs             # translations from Stremio/stremio-translations
+npm run build && npx playwright test           # rebuild + 117-test verification
+```
+
+See [docs/SYNC.md](docs/SYNC.md) for the full runbook, including how to bisect an engine version and how to add patches. Note: the compiled Theater v1.9.2 UI itself is an unpublished Stremio TV build — there is no newer public version of it to sync (the public Stremio/stremio-web repo is a different, mouse-first app).
 
 ## Under the Hood
 

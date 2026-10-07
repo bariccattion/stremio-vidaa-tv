@@ -1,0 +1,8 @@
+.git
+.github
+node_modules
+app
+tests
+test-results
+playwright-report
+.zcode
