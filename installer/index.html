@@ -1,0 +1,868 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<title>Stremio VIDAA Installer</title>
+<style>
+  @font-face {
+    font-family: 'PlusJakartaSans';
+    src: url('/PlusJakartaSans.ttf') format('truetype');
+    font-weight: normal;
+    font-style: normal;
+  }
+
+  * {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+  }
+
+  body {
+    background: #0a0a14;
+    color: #ffffff;
+    font-family: 'PlusJakartaSans', 'Segoe UI', Arial, sans-serif;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 40px;
+    overflow: hidden;
+  }
+
+  .container {
+    text-align: center;
+    max-width: 800px;
+    width: 100%;
+  }
+
+  .logo {
+    width: 140px;
+    height: auto;
+    margin-bottom: 20px;
+  }
+
+  h1 {
+    font-size: 48px;
+    font-weight: 700;
+    margin-bottom: 8px;
+    color: #ffffff;
+  }
+
+  .subtitle {
+    font-size: 22px;
+    color: #8888aa;
+    margin-bottom: 48px;
+  }
+
+  .status-area {
+    min-height: 60px;
+    margin-bottom: 36px;
+  }
+
+  .status-message {
+    font-size: 24px;
+    color: #ccccdd;
+    transition: opacity 0.3s ease;
+  }
+
+  .status-message.success {
+    color: #4cdf7f;
+  }
+
+  .status-message.error {
+    color: #ff5f6f;
+  }
+
+  .status-message.warning {
+    color: #f5a623;
+  }
+
+  .status-message.working {
+    color: #7b5bf5;
+  }
+
+  .spinner {
+    display: inline-block;
+    width: 20px;
+    height: 20px;
+    border: 3px solid rgba(123, 91, 245, 0.3);
+    border-top-color: #7b5bf5;
+    border-radius: 50%;
+    margin-right: 10px;
+    vertical-align: middle;
+    animation: spin 0.8s linear infinite;
+  }
+
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
+
+  .buttons {
+    display: flex;
+    gap: 24px;
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+
+  .btn {
+    display: inline-block;
+    padding: 20px 56px;
+    font-size: 28px;
+    font-weight: 600;
+    font-family: inherit;
+    border: 3px solid transparent;
+    border-radius: 16px;
+    cursor: pointer;
+    outline: none;
+    transition: background 0.2s, border-color 0.2s, transform 0.15s, box-shadow 0.2s;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+
+  .btn:focus {
+    border-color: #ffffff;
+    box-shadow: 0 0 0 4px rgba(123, 91, 245, 0.5);
+    transform: scale(1.04);
+  }
+
+  .btn-install {
+    background: #7b5bf5;
+    color: #ffffff;
+  }
+
+  .btn-install:hover,
+  .btn-install:focus {
+    background: #6a4ae0;
+  }
+
+  .btn-install:active {
+    background: #5939c0;
+    transform: scale(0.97);
+  }
+
+  .btn-install:disabled {
+    background: #3d3060;
+    color: #777799;
+    cursor: default;
+    transform: none;
+    box-shadow: none;
+    border-color: transparent;
+  }
+
+  .btn-uninstall {
+    background: transparent;
+    color: #8888aa;
+    border-color: #333355;
+  }
+
+  .btn-uninstall:hover,
+  .btn-uninstall:focus {
+    color: #ff5f6f;
+    border-color: #ff5f6f;
+    background: rgba(255, 95, 111, 0.08);
+  }
+
+  .btn-uninstall:active {
+    background: rgba(255, 95, 111, 0.15);
+    transform: scale(0.97);
+  }
+
+  .btn-uninstall:disabled {
+    color: #444466;
+    border-color: #222244;
+    cursor: default;
+    transform: none;
+    box-shadow: none;
+  }
+
+  .footer {
+    position: fixed;
+    bottom: 24px;
+    left: 0;
+    right: 0;
+    text-align: center;
+    font-size: 16px;
+    color: #555577;
+  }
+
+  .not-vidaa {
+    display: none;
+    margin-top: 32px;
+    padding: 20px 32px;
+    background: rgba(255, 95, 111, 0.1);
+    border: 1px solid rgba(255, 95, 111, 0.3);
+    border-radius: 12px;
+    font-size: 20px;
+    color: #ff8f9f;
+  }
+
+  .progress-bar-wrap {
+    width: 300px;
+    height: 6px;
+    background: #1a1a2e;
+    border-radius: 3px;
+    margin: 16px auto 0;
+    overflow: hidden;
+    display: none;
+  }
+
+  .progress-bar {
+    height: 100%;
+    width: 0%;
+    background: #7b5bf5;
+    border-radius: 3px;
+    transition: width 0.4s ease;
+  }
+
+  .devmode-hint {
+    display: none;
+    margin-top: 28px;
+    padding: 18px 28px;
+    background: rgba(245, 166, 35, 0.08);
+    border: 1px solid rgba(245, 166, 35, 0.35);
+    border-radius: 12px;
+    font-size: 18px;
+    color: #d4a843;
+    text-align: left;
+    line-height: 1.6;
+  }
+
+  .devmode-hint strong {
+    color: #f5c96a;
+    display: block;
+    margin-bottom: 6px;
+    font-size: 19px;
+  }
+
+  .devmode-hint ul {
+    margin: 6px 0 0 18px;
+  }
+
+  .diag-panel {
+    margin-top: 28px;
+    padding: 18px 22px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 12px;
+    text-align: left;
+  }
+
+  .diag-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 12px;
+  }
+
+  .diag-title {
+    font-size: 18px;
+    font-weight: 700;
+    color: #ffffff;
+  }
+
+  .diag-copy {
+    background: rgba(123, 91, 245, 0.18);
+    color: #d9d1ff;
+    border: 1px solid rgba(123, 91, 245, 0.4);
+    border-radius: 8px;
+    padding: 8px 14px;
+    font-size: 15px;
+    font-family: inherit;
+    cursor: pointer;
+  }
+
+  .diag-copy:focus {
+    outline: 2px solid #ffffff;
+    outline-offset: 2px;
+  }
+
+  .diag-help {
+    font-size: 16px;
+    color: #9ea0bf;
+    line-height: 1.5;
+    margin-bottom: 12px;
+  }
+
+  .diag-text {
+    width: 100%;
+    min-height: 220px;
+    resize: vertical;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 10px;
+    padding: 14px;
+    background: rgba(0, 0, 0, 0.28);
+    color: #d9dbef;
+    font-family: Consolas, "Courier New", monospace;
+    font-size: 14px;
+    line-height: 1.45;
+  }
+</style>
+</head>
+<body>
+
+<div class="container">
+  <img class="logo" src="/logo.png" alt="Stremio">
+  <h1>Stremio for VIDAA</h1>
+  <p class="subtitle">One-click installer</p>
+
+  <div class="status-area">
+    <p id="statusMsg" class="status-message"></p>
+    <div id="progressWrap" class="progress-bar-wrap">
+      <div id="progressBar" class="progress-bar"></div>
+    </div>
+  </div>
+
+  <div class="buttons">
+    <button id="btnInstall" class="btn btn-install" tabindex="1">Install Stremio</button>
+    <button id="btnUninstall" class="btn btn-uninstall" tabindex="2">Uninstall</button>
+  </div>
+
+  <div id="notVidaa" class="not-vidaa">
+    Hisense VIDAA APIs not detected. This installer must run on a VIDAA TV via DNS spoofing.
+  </div>
+
+  <div id="devmodeHint" class="devmode-hint">
+    <strong>Domain registration skipped</strong>
+    The app uses HTTPS (<code>bariccattion.github.io</code>) so it may still work without domain registration.
+    If the app does not load after install, Developer Mode may be required.
+    <ul>
+      <li>Settings &gt; System &gt; About &gt; press <strong>1234</strong> on the remote &gt; toggle Developer Mode</li>
+      <li>Some TV models may not support Developer Mode — the app often works without it.</li>
+    </ul>
+  </div>
+
+  <div class="diag-panel">
+    <div class="diag-header">
+      <div class="diag-title">Diagnostics</div>
+      <button id="btnCopyDiag" class="diag-copy" type="button">Copy Debug Blob</button>
+    </div>
+    <div class="diag-help">
+      Paste this into a GitHub issue if installation fails or says success but no launcher app appears.
+    </div>
+    <textarea id="diagText" class="diag-text" readonly></textarea>
+  </div>
+</div>
+
+<div class="footer">
+  github.com/bariccattion/stremio-vidaa-tv
+</div>
+
+<script>
+(function() {
+  "use strict";
+
+  var APP_ID      = "stremio-vidaa";
+  var APP_NAME    = "Stremio";
+  var BUILD_ID    = "e2a7b41";
+  var INSTALL_ORIGIN = window.location.origin;
+  var ICON_URL    = INSTALL_ORIGIN + "/icon.png";
+  var APP_URL     = "https://bariccattion.github.io/stremio-vidaa-tv/?install_source=method1";
+  var STORE_TYPE  = "store";
+  var GH_DOMAIN   = "bariccattion.github.io";
+  var APPINFO_PATH = "websdk/Appinfo.json";
+  var APPINFO_MODE = 6;
+
+  var statusMsg   = document.getElementById("statusMsg");
+  var progressWrap = document.getElementById("progressWrap");
+  var progressBar = document.getElementById("progressBar");
+  var btnInstall  = document.getElementById("btnInstall");
+  var btnUninstall = document.getElementById("btnUninstall");
+  var notVidaa    = document.getElementById("notVidaa");
+  var btnCopyDiag = document.getElementById("btnCopyDiag");
+  var diagText    = document.getElementById("diagText");
+
+  var hasLegacyInstall = (typeof Hisense_installApp === "function");
+  var hasRegistryApi = (typeof HiUtils_createRequest === "function");
+  var isVidaa = hasLegacyInstall || hasRegistryApi;
+  var diagState = {
+    build: BUILD_ID,
+    page: "installer",
+    origin: window.location.origin,
+    href: window.location.href,
+    host: window.location.host,
+    path: window.location.pathname,
+    onVidaaHubDomain: window.location.hostname === "vidaahub.com",
+    appId: APP_ID,
+    appUrl: APP_URL,
+    iconUrl: ICON_URL,
+    userAgent: navigator.userAgent,
+    isVidaa: isVidaa,
+    availableApis: {
+      installApp: typeof Hisense_installApp === "function",
+      uninstallApp: typeof Hisense_uninstallApp === "function",
+      registryWrite: hasRegistryApi,
+      addInsecureDomain: typeof Hisense_AddInsecureDomain === "function",
+      getInsecureDomain: typeof Hisense_GetInsecureDomain === "function",
+      getOSVersion: typeof Hisense_GetOSVersion === "function"
+    },
+    registerDomain: {
+      attempted: false,
+      status: "not-run",
+      detail: null
+    },
+    install: {
+      attempted: false,
+      method: "not-run",
+      callbackCode: null,
+      callbackStatus: "not-run",
+      exception: null
+    },
+    registryInstall: {
+      available: hasRegistryApi,
+      attempted: false,
+      readRet: null,
+      writeRet: null,
+      entryCount: null,
+      error: null
+    },
+    registryUninstall: {
+      attempted: false,
+      result: "not-run"
+    }
+  };
+
+  function renderDiagnostics() {
+    diagText.value = JSON.stringify(diagState, null, 2);
+  }
+
+  function copyDiagnostics() {
+    renderDiagnostics();
+    var blob = diagText.value;
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(blob).then(function() {
+        setStatus("Diagnostics copied to clipboard.", "success");
+      }).catch(function() {
+        diagText.focus();
+        diagText.select();
+        setStatus("Copy failed — diagnostics selected for manual copy.", "warning");
+      });
+      return;
+    }
+    diagText.focus();
+    diagText.select();
+    setStatus("Clipboard API unavailable — diagnostics selected for manual copy.", "warning");
+  }
+
+  function setStatus(text, type) {
+    var prefix = "";
+    if (type === "working") {
+      prefix = '<span class="spinner"></span>';
+    }
+    statusMsg.innerHTML = prefix + text;
+    statusMsg.className = "status-message" + (type ? " " + type : "");
+  }
+
+  function showProgress(pct) {
+    progressWrap.style.display = "block";
+    progressBar.style.width = pct + "%";
+  }
+
+  function hideProgress() {
+    progressWrap.style.display = "none";
+    progressBar.style.width = "0%";
+  }
+
+  function disableButtons(disabled) {
+    btnInstall.disabled = disabled;
+    btnUninstall.disabled = disabled;
+  }
+
+  /* ---------- domain registration ---------- */
+  function showDevmodeHint() {
+    document.getElementById("devmodeHint").style.display = "block";
+  }
+
+  function registerDomain(callback) {
+    setStatus("Registering trusted domain...", "working");
+    showProgress(20);
+
+    /* If the API doesn't exist at all, skip gracefully */
+    if (typeof Hisense_AddInsecureDomain !== "function") {
+      diagState.registerDomain.attempted = true;
+      diagState.registerDomain.status = "unavailable";
+      diagState.registerDomain.detail = "Hisense_AddInsecureDomain missing";
+      renderDiagnostics();
+      setStatus(
+        "Domain registration unavailable \u2014 continuing anyway (app uses HTTPS).",
+        "warning"
+      );
+      showDevmodeHint();
+      showProgress(40);
+      setTimeout(function() { callback(true); }, 600);
+      return;
+    }
+
+    try {
+      var result = Hisense_AddInsecureDomain(GH_DOMAIN);
+      diagState.registerDomain.attempted = true;
+      diagState.registerDomain.status = "ok";
+      diagState.registerDomain.detail = String(result);
+      renderDiagnostics();
+
+      /* Some firmware returns a non-zero error code instead of throwing */
+      if (typeof result === "number" && result !== 0) {
+        throw new Error("returned code " + result);
+      }
+
+      showProgress(40);
+      setTimeout(function() { callback(true); }, 500);
+    } catch (e) {
+      var msg = (e && e.message) ? e.message : String(e);
+      var isDisabled = /disabled/i.test(msg);
+      diagState.registerDomain.attempted = true;
+      diagState.registerDomain.status = isDisabled ? "disabled" : "error";
+      diagState.registerDomain.detail = msg;
+      renderDiagnostics();
+
+      if (isDisabled) {
+        setStatus(
+          "Developer Mode is disabled on this TV \u2014 skipping domain registration. " +
+          "Install will continue; the app may still work over HTTPS.",
+          "warning"
+        );
+      } else {
+        setStatus(
+          "Domain registration skipped (" + msg + ") \u2014 continuing anyway.",
+          "warning"
+        );
+      }
+      showDevmodeHint();
+      showProgress(40);
+      /* Non-blocking: continue the install regardless */
+      setTimeout(function() { callback(true); }, 800);
+    }
+  }
+
+  /* ---------- install ---------- */
+
+  /* After a successful install, ask the Hisense launcher to refresh its app list
+   * immediately. The official Stremio installer does this via an APPMessage /
+   * AllAppsUpdate sent over omi_platform.sendPlatformMessage. Without this
+   * message the launcher may not see the newly installed app until a full
+   * reboot — and on some firmware, never at all. Mirrors the pattern from
+   * github.com/Stremio/stremio-hisense-install. */
+  function refreshAppsOnHisenseUI(appInfo) {
+    var msg = {
+      type: "APPMessage",
+      MsgType: "appControl",
+      action: "updateAppState",
+      source: "browser",
+      startAppType: 0x2,
+      param: {
+        event: "AllAppsUpdate",
+        SubModuleName: "AllApps",
+        startFrom: "",
+        appInfo: appInfo
+      }
+    };
+    var sent = false;
+    try {
+      if (window.omi_platform && typeof window.omi_platform.sendPlatformMessage === "function") {
+        window.omi_platform.sendPlatformMessage(JSON.stringify(msg));
+        sent = true;
+      } else if (window.opera_omi && typeof window.opera_omi.sendPlatformMessage === "function") {
+        window.opera_omi.sendPlatformMessage(JSON.stringify(msg));
+        sent = true;
+      }
+    } catch (e) {
+      diagState.install.refreshError = e.message;
+    }
+    diagState.install.launcherRefreshSent = sent;
+  }
+
+  /* ---------- registry install (websdk/Appinfo.json) ---------- */
+
+  /* Newer firmware accepts Hisense_installApp, reports success, and then never
+   * adds the launcher entry. The web-app list itself lives in
+   * websdk/Appinfo.json and can be read/written directly through
+   * HiUtils_createRequest — the technique documented by
+   * github.com/weinzii/vidaa-edge. The registry path runs first whenever the
+   * API exists; the legacy call below remains as fallback. */
+  function readAppRegistry() {
+    var res = HiUtils_createRequest("fileRead", { path: APPINFO_PATH, mode: APPINFO_MODE });
+    if (!res || !res.ret) return null;
+    try {
+      var parsed = JSON.parse(res.msg);
+      if (!parsed || typeof parsed !== "object" || !Array.isArray(parsed.AppInfo)) return null;
+      return parsed;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function buildRegistryEntry() {
+    return {
+      Id: APP_ID,
+      AppName: APP_NAME,
+      Title: APP_NAME,
+      URL: APP_URL,
+      StartCommand: APP_URL,
+      IconURL: ICON_URL,
+      Icon_96: ICON_URL,
+      Image: ICON_URL,
+      Thumb: ICON_URL,
+      Type: "Browser",
+      InstallTime: new Date().toISOString().split("T")[0],
+      RunTimes: 0,
+      StoreType: "custom",
+      PreInstall: false
+    };
+  }
+
+  function writeAppRegistry(apps) {
+    return HiUtils_createRequest("fileWrite", {
+      path: APPINFO_PATH,
+      mode: APPINFO_MODE,
+      writedata: JSON.stringify(apps)
+    });
+  }
+
+  function installViaRegistry() {
+    diagState.registryInstall.attempted = true;
+    var apps = readAppRegistry();
+    diagState.registryInstall.readRet = apps ? "ok" : "failed";
+    if (!apps) {
+      /* Never write blind: rewriting a registry we could not read would wipe
+       * every installed web app. Bail out and let the legacy API try. */
+      diagState.registryInstall.error = "Appinfo.json unreadable — refusing to overwrite it";
+      renderDiagnostics();
+      return false;
+    }
+
+    var entry = buildRegistryEntry();
+    var idx = -1;
+    for (var i = 0; i < apps.AppInfo.length; i++) {
+      if (apps.AppInfo[i] && apps.AppInfo[i].Id === APP_ID) { idx = i; break; }
+    }
+    if (idx >= 0) {
+      apps.AppInfo[idx] = entry;
+    } else {
+      apps.AppInfo.push(entry);
+    }
+
+    var res = writeAppRegistry(apps);
+    diagState.registryInstall.writeRet = res ? res.ret : null;
+    diagState.registryInstall.entryCount = apps.AppInfo.length;
+    if (!res || !res.ret) {
+      diagState.registryInstall.error = (res && res.msg) ? String(res.msg) : "fileWrite returned no success";
+      renderDiagnostics();
+      return false;
+    }
+    renderDiagnostics();
+    return true;
+  }
+
+  function uninstallViaRegistry() {
+    var apps = readAppRegistry();
+    if (!apps) return false;
+    var idx = -1;
+    for (var i = 0; i < apps.AppInfo.length; i++) {
+      if (apps.AppInfo[i] && apps.AppInfo[i].Id === APP_ID) { idx = i; break; }
+    }
+    if (idx < 0) return false;
+    apps.AppInfo.splice(idx, 1);
+    var res = writeAppRegistry(apps);
+    return !!(res && res.ret);
+  }
+
+  function doInstall() {
+    if (!isVidaa) return;
+    disableButtons(true);
+
+    registerDomain(function(ok) {
+      /* ok is always true — domain registration is non-blocking */
+      setStatus("Installing Stremio...", "working");
+      showProgress(60);
+      diagState.install.attempted = true;
+      renderDiagnostics();
+
+      /* Registry-first: on newer firmware Hisense_installApp reports success
+       * but the launcher entry never appears (the silent drop). Writing
+       * websdk/Appinfo.json directly is the only path that reliably lands. */
+      if (hasRegistryApi && installViaRegistry()) {
+        showProgress(100);
+        diagState.install.method = "registry";
+        diagState.install.callbackStatus = "registry-accepted";
+        refreshAppsOnHisenseUI(APP_ID);
+        setStatus(
+          "Installed via app registry \u2014 Stremio was written directly into the launcher's app list. " +
+          "Fully restart your TV now (not standby \u2014 unplug for 10 seconds if needed); Stremio appears at the end of the app list. " +
+          "If it still does not show, bookmark bariccattion.github.io/stremio-vidaa-tv in the TV Browser (Method 1) \u2014 everything works the same.",
+          "success"
+        );
+        renderDiagnostics();
+        disableButtons(false);
+        return;
+      }
+
+      if (!hasLegacyInstall) {
+        diagState.install.method = hasRegistryApi ? "registry-failed" : "unavailable";
+        renderDiagnostics();
+        setStatus(
+          "No install path worked on this firmware \u2014 Hisense_installApp is " +
+          (hasLegacyInstall ? "present" : "missing") + " and the app registry write " +
+          (hasRegistryApi ? "failed" : "is unavailable") + ". " +
+          "Use Method 1: open the TV Browser and go to bariccattion.github.io/stremio-vidaa-tv",
+          "error"
+        );
+        hideProgress();
+        disableButtons(false);
+        return;
+      }
+
+      diagState.install.method = "legacy";
+      renderDiagnostics();
+
+      try {
+        Hisense_installApp(
+          APP_ID,
+          APP_NAME,
+          ICON_URL,
+          ICON_URL,
+          ICON_URL,
+          APP_URL,
+          STORE_TYPE,
+          function(result) {
+            showProgress(100);
+            diagState.install.callbackCode = result;
+            if (result === 0) {
+              diagState.install.callbackStatus = "accepted";
+              /* Tell the launcher to refresh — without this, many firmware
+               * revisions report install success but never show the icon. */
+              refreshAppsOnHisenseUI(APP_ID);
+              setStatus(
+                "Install request accepted \u2014 the TV firmware reported success, and the launcher has been asked to refresh. " +
+                "Fully restart your TV now (not standby \u2014 unplug for 10 seconds if needed). " +
+                "If Stremio still does not show in the launcher after a full restart, your firmware is silently blocking third-party launcher entries. " +
+                "Just bookmark bariccattion.github.io/stremio-vidaa-tv in the TV Browser and open it from there (Method 1). Everything works the same.",
+                "success"
+              );
+            } else {
+              diagState.install.callbackStatus = "failed";
+              setStatus(
+                "Install callback returned code " + result + ". Your TV refused to add the app to its launcher. " +
+                "Use Method 1 instead: open the TV Browser and go to bariccattion.github.io/stremio-vidaa-tv",
+                "error"
+              );
+            }
+            renderDiagnostics();
+            disableButtons(false);
+          }
+        );
+
+        /* The install function may return synchronously before callback fires */
+        showProgress(80);
+      } catch (e) {
+        diagState.install.callbackStatus = "exception";
+        diagState.install.exception = e.message;
+        renderDiagnostics();
+        setStatus("Installation failed: " + e.message, "error");
+        hideProgress();
+        disableButtons(false);
+      }
+    });
+  }
+
+  /* ---------- uninstall ---------- */
+  function doUninstall() {
+    if (!isVidaa) return;
+    disableButtons(true);
+    setStatus("Uninstalling Stremio...", "working");
+
+    /* Registry-first, mirroring the install path */
+    if (hasRegistryApi) {
+      diagState.registryUninstall.attempted = true;
+      var removed = uninstallViaRegistry();
+      diagState.registryUninstall.result = removed ? "ok" : "failed-or-not-installed";
+      renderDiagnostics();
+      if (removed) {
+        refreshAppsOnHisenseUI(APP_ID);
+        setStatus("Stremio removed from the app registry. Fully restart your TV and the icon disappears from the launcher.", "success");
+        disableButtons(false);
+        return;
+      }
+      setStatus("Registry uninstall failed \u2014 trying Hisense_uninstallApp...", "warning");
+    }
+
+    if (typeof Hisense_uninstallApp !== "function") {
+      setStatus("Hisense_uninstallApp not available on this firmware", "error");
+      disableButtons(false);
+      return;
+    }
+
+    try {
+      Hisense_uninstallApp(APP_ID, function(result) {
+        if (result === 0) {
+          setStatus("Stremio has been uninstalled.", "success");
+        } else {
+          setStatus("Uninstall callback returned code: " + result, "error");
+        }
+        disableButtons(false);
+      });
+    } catch (e) {
+      setStatus("Uninstall failed: " + e.message, "error");
+      disableButtons(false);
+    }
+  }
+
+  /* ---------- d-pad navigation ---------- */
+  function handleKeydown(e) {
+    var code = e.keyCode || e.which;
+    var focused = document.activeElement;
+
+    /* Enter / OK button */
+    if (code === 13) {
+      if (focused && focused.click) {
+        focused.click();
+      }
+      return;
+    }
+
+    /* Left / Right arrow */
+    if (code === 37 || code === 39) {
+      if (focused === btnInstall) {
+        btnUninstall.focus();
+      } else {
+        btnInstall.focus();
+      }
+      e.preventDefault();
+    }
+  }
+
+  /* ---------- init ---------- */
+  function init() {
+    btnInstall.addEventListener("click", doInstall);
+    btnUninstall.addEventListener("click", doUninstall);
+    btnCopyDiag.addEventListener("click", copyDiagnostics);
+    document.addEventListener("keydown", handleKeydown);
+
+    if (!isVidaa) {
+      notVidaa.style.display = "block";
+      setStatus("Waiting for VIDAA environment...", "");
+    } else {
+      setStatus("Ready to install", "");
+      /* Auto-register domain on load */
+      try {
+        Hisense_AddInsecureDomain(GH_DOMAIN);
+      } catch (e) { /* silent */ }
+    }
+
+    renderDiagnostics();
+    btnInstall.focus();
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", init);
+  } else {
+    init();
+  }
+})();
+</script>
+
+</body>
+</html>
