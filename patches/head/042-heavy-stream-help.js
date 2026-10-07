@@ -247,6 +247,10 @@
         input.value = (window.__STREMIO_SERVER_URL__ && window.__STREMIO_SERVER_URL__ !== 'http://127.0.0.1:11470') ? window.__STREMIO_SERVER_URL__ : '';
         input.style.cssText = 'width:100%;box-sizing:border-box;padding:12px 14px;border-radius:10px;border:1px solid rgba(255,255,255,0.18);background:rgba(0,0,0,0.35);color:#fff;font-size:16px;font-family:Consolas,monospace;margin-bottom:12px;';
         input.setAttribute('tabindex', '0');
+        // Same as patch 043: keep the VIDAA keyboard's autocomplete out of URL fields.
+        input.setAttribute('autocomplete', 'off');
+        input.setAttribute('autocorrect', 'off');
+        input.setAttribute('autocapitalize', 'off');
         card.appendChild(input);
 
         var status = document.createElement('div');

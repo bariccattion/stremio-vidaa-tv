@@ -1,0 +1,11 @@
+{
+  "chunk": "main.js",
+  "description": "Surgical edits to the pristine Theater 1.9.2 main.js. Derived from git baseline b202cd0.",
+  "ops": [
+    {
+      "note": "Shared TextField: suppress TV-keyboard autocompletion/autocorrect (the VIDAA keyboard was injecting suggestion/mask content into URL and search fields).",
+      "find": "var Xt = (0, r.vs)(\"<input type=text>\");",
+      "replace": "var Xt = (0, r.vs)(\"<input type=text autocomplete=off autocorrect=off autocapitalize=off>\");"
+    }
+  ]
+}

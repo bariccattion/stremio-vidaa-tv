@@ -1,45 +1,27 @@
 // ═══════════════════════════════════════════════════════════════════════
-// Server URL manager — configure the streaming server from Settings,
-// no launch URL (?server=) needed. The primary setup path:
-//   Settings → STREMIO TV → "Streaming Server: …" → type the address →
-//   Save & Test (pings it with a timeout) → saved for future sessions.
-// Plus an EXPLICIT "Auto-Detect" button that sweeps the LAN for a Stremio
-// server on port 11470 (with short per-probe timeouts).
+// Server URL autodetect + native-dialog integration.
 //
-// HARD RULES (project): the auto-detect scan is strictly manual — it NEVER
-// runs in the background or on startup; the overlay is corner-anchored and
-// always dismissible (never traps the remote); ES5 only.
+// The server URL is edited in the NATIVE Settings > Server > Edit URL dialog
+// (a settings.chunk.js edit keeps it a plain field: local value, committed
+// ONCE on Confirm; patch 006 then mirrors the commit to localStorage so
+// future sessions auto-reconnect). This patch adds the extras around that
+// native field — no custom input UI of our own:
+//   • "Auto-Detect" button inside the native dialog (the chunk edit calls
+//     window.__serverDialogAutoDetect): sweeps the LAN for a Stremio server
+//     on port 11470 with short per-probe timeouts, fills the field with the
+//     winner; the user still presses Confirm to apply.
+//   • Reachability ping with timeout after Confirm (the chunk edit calls
+//     window.__serverDialogTest), reported as a toast.
+//
+// HARD RULES (project): the scan is strictly manual — it NEVER runs on
+// startup or in the background; toasts never trap the remote; ES5 only.
 // ═══════════════════════════════════════════════════════════════════════
 (function() {
     'use strict';
 
-    var DEFAULT_URL = 'http://127.0.0.1:11470';
     var SCAN_TIMEOUT_MS = 1200;   // per-candidate probe timeout during the LAN sweep
     var SCAN_CONCURRENCY = 32;    // candidates probed in parallel
-    var TEST_TIMEOUT_MS = 3000;   // Save & Test probe timeout
-
-    function normalizeUrl(url) {
-        url = (url || '').trim();
-        if (!url) return '';
-        if (!/^https?:\/\//i.test(url)) url = 'http://' + url;
-        return url.replace(/\/+$/, '');
-    }
-
-    function isDefaultUrl(url) {
-        return !url || url === DEFAULT_URL;
-    }
-
-    // ── Save. Patch 042's __setStremioServerUrl (localStorage + window global
-    // + WASM-core push) is the normal path and always loads before this patch;
-    // the fallback here only covers the localStorage/global part. ──────────
-    function setServerUrl(url) {
-        if (typeof window.__setStremioServerUrl === 'function') return window.__setStremioServerUrl(url);
-        url = normalizeUrl(url);
-        if (!url) return false;
-        try { localStorage.setItem('stremio_server_url', url); } catch (e) {}
-        window.__STREMIO_SERVER_URL__ = url;
-        return true;
-    }
+    var TEST_TIMEOUT_MS = 3000;   // Confirm-time ping timeout
 
     // ── Probe. Same contract as patch 041's shared probe (GET /settings with
     // an AbortController timeout); kept as a guarded fallback so this patch
@@ -81,7 +63,9 @@
     }
 
     function candidateUrl(host, port) {
-        var u = normalizeUrl(host);
+        var u = (host || '').trim();
+        if (!/^https?:\/\//i.test(u)) u = 'http://' + u;
+        u = u.replace(/\/+$/, '');
         var m = /^(https?:\/\/)([^\/?#]+)([\/?#].*)?$/i.exec(u);
         if (!m) return u;
         if (/:\d+$/.test(m[2])) return u;
@@ -191,155 +175,66 @@
         return { cancel: function() { stop.cancelled = true; finish(null); } };
     };
 
-    // ═══════════════════════════════════════════════════════════════════
-    // The Settings overlay: edit URL, Save & Test, Auto-Detect, Reset.
-    // ═══════════════════════════════════════════════════════════════════
-    window.__showServerUrlManager = function() {
-        var existing = document.getElementById('dv-server-url-manager');
-        if (existing) { existing.remove(); return; }
+    // ── Toast — non-interactive feedback, never traps the remote. ──────────
+    var toastEl = null;
+    var toastHideTimer = null;
+    function toast(text, sticky) {
+        try {
+            if (!toastEl || !toastEl.parentNode) {
+                toastEl = document.createElement('div');
+                toastEl.id = 'dv-server-toast';
+                toastEl.style.cssText = 'position:fixed;top:40px;left:50%;transform:translateX(-50%);background:rgba(123,91,245,0.95);color:#fff;padding:10px 22px;border-radius:8px;font-family:PlusJakartaSans,sans-serif;font-size:0.92rem;z-index:100000;max-width:80%;text-align:center;line-height:1.4;';
+                document.body.appendChild(toastEl);
+            }
+            toastEl.textContent = text;
+            if (toastHideTimer) { clearTimeout(toastHideTimer); toastHideTimer = null; }
+            if (!sticky) toastHideTimer = setTimeout(function() {
+                if (toastEl && toastEl.parentNode) toastEl.remove();
+                toastEl = null;
+            }, 5000);
+        } catch (e) {}
+    }
 
-        var scan = null;
+    // ── Confirm-time ping (called by the chunk-edited native dialog right
+    // after it commits the URL). Pure feedback — the URL is already saved. ──
+    window.__serverDialogTest = function(url) {
+        if (!url) return;
+        var t0 = Date.now();
+        toast('Checking ' + url + ' …', true);
+        probe(url, function(res) {
+            if (res.reachable) {
+                toast('✓ Streaming server reachable (' + res.note + ', ' + (Date.now() - t0) + ' ms)');
+            } else {
+                toast('✗ Streaming server not reachable (' + res.note + '). The address is saved and will be retried.');
+            }
+        }, TEST_TIMEOUT_MS);
+    };
 
-        var card = document.createElement('div');
-        card.id = 'dv-server-url-manager';
-        // Corner-anchored, scrollable, NOT fullscreen — never traps the remote.
-        card.style.cssText = 'position:fixed;bottom:40px;left:50%;transform:translateX(-50%);width:min(620px,92vw);max-height:80vh;overflow:auto;background:rgba(14,14,20,0.98);color:#fff;padding:22px 24px;border-radius:16px;font-family:PlusJakartaSans,sans-serif;z-index:100001;box-shadow:0 12px 50px rgba(0,0,0,0.7);';
-
-        var title = document.createElement('div');
-        title.style.cssText = 'font-size:20px;font-weight:800;margin-bottom:8px;';
-        title.textContent = 'Streaming Server';
-        card.appendChild(title);
-
-        var status = document.createElement('div');
-        status.id = 'dv-server-url-status';
-        status.style.cssText = 'font-size:14px;min-height:20px;margin-bottom:12px;font-weight:600;line-height:1.5;';
-        card.appendChild(status);
-
-        var input = document.createElement('input');
-        input.type = 'text';
-        input.placeholder = 'http://192.168.1.x:11470';
-        input.value = isDefaultUrl(window.__STREMIO_SERVER_URL__) ? '' : window.__STREMIO_SERVER_URL__;
-        input.style.cssText = 'width:100%;box-sizing:border-box;padding:12px 14px;border-radius:10px;border:1px solid rgba(255,255,255,0.18);background:rgba(0,0,0,0.35);color:#fff;font-size:16px;font-family:Consolas,monospace;margin-bottom:8px;';
-        input.setAttribute('tabindex', '0');
-        card.appendChild(input);
-
-        var hint = document.createElement('div');
-        hint.style.cssText = 'font-size:12.5px;color:rgba(255,255,255,0.55);line-height:1.55;margin-bottom:14px;';
-        hint.textContent = 'Runs on the device with Stremio installed (phone / PC), on the same Wi-Fi. The address is saved and retried automatically every session. Auto-Detect searches the network for it — only when you press the button.';
-        card.appendChild(hint);
-
-        function mkButton(label, primary) {
-            var b = document.createElement('button');
-            b.textContent = label;
-            b.style.cssText = 'background:' + (primary ? '#7b5bf5' : 'rgba(255,255,255,0.12)') + ';color:#fff;border:none;border-radius:8px;padding:9px 16px;font-size:13px;font-family:inherit;font-weight:600;cursor:pointer;text-align:center;';
-            b.setAttribute('tabindex', '0');
-            b.onfocus = function() { this.style.outline = '2px solid #a78bfa'; };
-            b.onblur = function() { this.style.outline = 'none'; };
-            return b;
-        }
-        function setStatus(text, color) {
-            status.textContent = text;
-            status.style.color = color || 'rgba(255,255,255,0.7)';
-        }
-
-        // ── Save & Test — saves immediately (future sessions auto-reconnect),
-        // then pings the server with a timeout and reports honestly. ────────
-        var saveBtn = mkButton('Save & Test', true);
-        saveBtn.onclick = function() {
-            var url = normalizeUrl(input.value);
-            if (!url) { setStatus('Type the server address first, or press Auto-Detect.', '#fbbf24'); return; }
-            setServerUrl(url);
-            setStatus('Checking ' + url + ' …', '#fbbf24');
-            saveBtn.disabled = true;
-            saveBtn.style.opacity = '0.5';
-            var t0 = Date.now();
-            probe(url, function(res) {
-                saveBtn.disabled = false;
-                saveBtn.style.opacity = '1';
-                if (res.reachable) {
-                    setStatus('✓ Connected — Stremio Server ' + res.note + ' (' + (Date.now() - t0) + ' ms). Saved for future sessions.', '#4ade80');
-                } else {
-                    setStatus('✗ Not reachable (' + res.note + '). The address is still saved — it will be retried on next launch.', '#f87171');
-                }
-            }, TEST_TIMEOUT_MS);
-        };
-
-        // ── Auto-Detect — explicit user action only. ────────────────────────
-        var detectBtn = mkButton('Auto-Detect');
-        var resetBtn = mkButton('Reset to Default');
-        function setScanning(on) {
-            detectBtn.textContent = on ? 'Stop Scan' : 'Auto-Detect';
-            saveBtn.disabled = on;
-            saveBtn.style.opacity = on ? '0.5' : '1';
-            resetBtn.disabled = on;
-            resetBtn.style.opacity = on ? '0.5' : '1';
-        }
-        detectBtn.onclick = function() {
-            if (scan) { scan.cancel(); return; }
-            setStatus('Scanning the local network for a Stremio server …', '#fbbf24');
-            setScanning(true);
-            scan = window.__autoDetectStremioServer({}, function(p) {
-                var label = p.subnet ? ' (' + p.subnet + ')' : '';
-                setStatus('Scanning the local network for a Stremio server … ' + p.checked + '/' + p.total + label, '#fbbf24');
-            }, function(res) {
-                scan = null;
-                setScanning(false);
-                if (res && res.url) {
-                    input.value = res.url;
-                    setServerUrl(res.url);
-                    setStatus('✓ Found streaming server at ' + res.url + ' (' + res.note + ') — saved for future sessions.', '#4ade80');
-                } else {
-                    setStatus('Scan stopped — no Stremio server found. Make sure Stremio is running on a device on the same Wi-Fi, then type its address above.', '#fbbf24');
-                }
-            });
-        };
-
-        resetBtn.onclick = function() {
-            setServerUrl(DEFAULT_URL);
-            input.value = '';
-            setStatus('Reset to the built-in default (no external streaming server).', 'rgba(255,255,255,0.7)');
-        };
-
-        var closeBtn = mkButton('Close');
-        closeBtn.onclick = function() { closeCard(); };
-
-        function closeCard() {
-            if (scan) { scan.cancel(); scan = null; }
-            if (card.parentNode) card.remove();
-        }
-
-        // Remote-friendly Back: closes the card — except while typing in the
-        // input, where Backspace must keep working as text editing.
-        card.addEventListener('keydown', function(e) {
-            var k = e.keyCode;
-            var typing = (e.target === input);
-            if (typing && (k === 8 || (k >= 32 && k <= 126) || k === 229)) return;
-            if (k === 8 || k === 27 || k === 461 || k === 10009 || k === 88) {
-                if (e.preventDefault) e.preventDefault();
-                closeCard();
+    // ── Auto-Detect (called by the "Auto-Detect" button in the native
+    // dialog). Fills the dialog's field with the winner via input.value —
+    // the VIDAA keyboard fix (patch 003) fires the synthetic input event, so
+    // the dialog's local value mirrors it; the user still presses Confirm. ──
+    var activeScan = null;
+    window.__serverDialogAutoDetect = function(opts) {
+        if (activeScan) { activeScan.cancel(); return; }
+        toast('Scanning the local network for a Stremio server …', true);
+        activeScan = window.__autoDetectStremioServer(opts || {}, function(p) {
+            var label = p.subnet ? ' (' + p.subnet + ')' : '';
+            toast('Scanning the local network for a Stremio server … ' + p.checked + '/' + p.total + label, true);
+        }, function(res) {
+            activeScan = null;
+            if (res && res.url) {
+                var filled = false;
+                try {
+                    var input = document.querySelector('input[type=text]');
+                    if (input) { input.value = res.url; filled = true; }
+                } catch (e) {}
+                toast(filled
+                    ? '✓ Found streaming server at ' + res.url + ' (' + res.note + ') — press Confirm to save'
+                    : '✓ Found streaming server at ' + res.url + ' (' + res.note + ') — type this address and confirm');
+            } else {
+                toast('No Stremio server found on the network. Make sure Stremio is running on a device on the same Wi-Fi.');
             }
         });
-
-        var row = document.createElement('div');
-        row.style.cssText = 'display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap;';
-        row.appendChild(saveBtn);
-        row.appendChild(detectBtn);
-        row.appendChild(resetBtn);
-        row.appendChild(closeBtn);
-        card.appendChild(row);
-        document.body.appendChild(card);
-        setTimeout(function() { input.focus(); }, 60);
-
-        // Current state, probed honestly on open.
-        var cur = window.__STREMIO_SERVER_URL__;
-        if (isDefaultUrl(cur)) {
-            setStatus('No streaming server configured (using the built-in default).', 'rgba(255,255,255,0.7)');
-        } else {
-            setStatus('Current: ' + cur + ' — checking …', '#fbbf24');
-            probe(cur, function(res) {
-                if (res.reachable) setStatus('Current: ' + cur + ' — ✓ online (' + res.note + ')', '#4ade80');
-                else setStatus('Current: ' + cur + ' — ✗ offline (' + res.note + '). Update the address below, or Auto-Detect.', '#f87171');
-            }, TEST_TIMEOUT_MS);
-        }
     };
 })();

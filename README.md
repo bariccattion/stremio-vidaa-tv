@@ -33,7 +33,7 @@ This project was originally built to get Stremio working on a **Hisense PX3-Pro 
 - **Full Stremio**, not Lite — community addons (Torrentio, etc.), streaming server support, transcoding, external debrid services all work.
 - **Modern stremio-core v5 WASM engine** (currently **0.64.1**, synced from Stremio's official releases) grafted onto the original Stremio Theater v1.9.2 TV frontend (built for D-pad navigation and 10-foot viewing distance — perfect for projectors).
 - **Projector-first defaults** — no full-screen error overlays blocking your remote, large UI sizing, Method 2 (bookmark) as the reliable install path.
-- **Every custom feature is a toggle** in Settings &gt; STREMIO TV so you can turn anything on or off per device.
+- **Every custom feature is a toggle** in Settings &gt; Vidaa TV so you can turn anything on or off per device.
 - **Reverse-engineered VIDAA integration** for native player handoff, hardware codec detection, trusted-domain registration, and launcher installation.
 
 ## Requirements
@@ -107,7 +107,7 @@ docker run -d --name stremio-server -p 11470:11470 stremio/server
 
 Or install [Stremio desktop](https://www.stremio.com/downloads) on a PC, which includes the server automatically.
 
-**Connect it to the app** via **Settings > STREMIO TV > Streaming Server** in the app: type the address (e.g. `http://192.168.1.50:11470`) and press **Save & Test** — the app pings the server with a timeout and saves the address for every future session. Not sure of the address? Press **Auto-Detect** to sweep the local network for a running Stremio server (runs only when you press it).
+**Connect it to the app** at **Settings > Server > Edit URL**: type the address (e.g. `http://192.168.1.50:11470`) and confirm — the address is saved for every future session, and the app pings it with a timeout to tell you whether it answered. Not sure of the address? Press **Auto-Detect** in the same dialog to sweep the local network for a running Stremio server (it only runs when you press it).
 
 Shortcut: you can also add `?server=` to the URL once, and it is saved automatically:
 
@@ -115,7 +115,7 @@ Shortcut: you can also add `?server=` to the URL once, and it is saved automatic
 https://bariccattion.github.io/stremio-vidaa-tv/?server=http://192.168.1.50:11470
 ```
 
-Replace `192.168.1.50` with your server's IP. You can also change the address inside the app at **Settings > Server > Edit URL**.
+Replace `192.168.1.50` with your server's IP.
 
 ## Tested Codec Support (Hisense PX1HE / 100L5H)
 
@@ -144,7 +144,7 @@ DRM: Widevine, PlayReady, and ClearKey are all supported.
 |---|---|
 | **Full addon support** | All community addons work, including Torrentio with Real-Debrid |
 | **Dolby Vision playback** | DV+HDR streams in MKV play natively at 4K. Smart stall detection warns only on actual failure |
-| **Server URL manager** | Configure the streaming server from **Settings > STREMIO TV > Streaming Server**: Save & Test pings it with a timeout, Auto-Detect sweeps the LAN (manual only), reset supported. `?server=` still works as a shortcut; changes sync to the WASM core |
+| **Server URL setup** | Native **Settings > Server > Edit URL** as a plain TV-friendly field: Auto-Detect sweeps the LAN for the server (manual only), Confirm pings the saved URL with a timeout, and the address persists for future sessions. `?server=` still works as a shortcut; changes sync to the WASM core |
 | **VIDAA keyboard fix** | 3-layer fix for the VIDAA on-screen keyboard not triggering search |
 | **Resolution indicator** | Shows current playback quality (4K/1080p/720p) in the player |
 | **Splash screen** | Loading screen with progress bar while WASM initialises |
@@ -203,7 +203,7 @@ How it works in this build:
 
 - **webtorrent 3.0.21, pinned and vendored** — `upstream/vendor/webtorrent/3.0.21/`, syntax-lowered to ES2017 so older TV browsers can parse it. Nothing is fetched from a CDN at play time (the old floating `webtorrent@latest` CDN load was unreliable and is gone).
 - **Progressive streaming, not buffering** — playback goes through webtorrent's service-worker streaming server (`file.streamTo`), so the first frame starts long before the file finishes downloading. (Earlier builds used `getBlobURL()`, which buffered the *entire file into RAM* before playing.)
-- **Trackers: `wss://tracker.webtorrent.dev` and `wss://open.ftorrent.com`** — the two live entries in the auto-updated public WSS tracker lists. `wss://tracker.btorrent.xyz` is dead and `wss://tracker.openwebtorrent.com` is intermittent (current status: [checker.openwebtorrent.com](https://checker.openwebtorrent.com/)).
+- **Trackers: synced from [ngosang/trackerslist](https://github.com/ngosang/trackerslist)**, the bot-checked public tracker repo — run `npm run sync-trackers` to refresh. Only that repo's `wss://` websocket list applies here: its other 80+ entries are udp/http announce, which browsers can't speak. Current set: `wss://tracker.webtorrent.dev`, `wss://open.ftorrent.com`, `wss://tracker.openwebtorrent.com` (the last one is known-flaky; the bot keeps it because it currently answers).
 - **Honest failure story** — if zero peers connect within ~30 seconds, a dismissible message says the torrent isn't web-seeded and points at debrid / a streaming server, instead of an eternal "Connecting to peers…".
 
 ### Existing VIDAA-Specific Features

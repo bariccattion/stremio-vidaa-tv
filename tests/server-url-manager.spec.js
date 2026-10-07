@@ -1,15 +1,15 @@
 // @ts-check
-// Tests for the Server URL manager (patch 043): configure the streaming
-// server from Settings instead of the ?server= launch param.
-//
-// Hard rules under test:
-//   • Save & Test persists the URL (localStorage + __STREMIO_SERVER_URL__) so
-//     future sessions auto-reconnect, and pings it with a timeout
-//   • Auto-Detect is STRICTLY manual (no timers, no startup scan) and sweeps
-//     the configured subnet first, then common home-router defaults
-//   • The overlay is corner-anchored, dismissible (Close + Back key), and
-//     never fullscreen — it never traps the remote
+// Tests for the server URL configuration (patch 043) — integrated with the
+// NATIVE Settings > Server > Edit URL dialog instead of custom input UI:
+//   • the dialog is a plain field (chunk edit): local value, committed once
+//     on Confirm, then mirrored to localStorage by patch 006 so future
+//     sessions auto-reconnect
+//   • "Auto-Detect" button inside the native dialog sweeps the LAN for a
+//     Stremio server on port 11470 — STRICTLY manual, never at startup
+//   • Confirm pings the saved URL with a timeout and toasts the result
+//   • the old custom overlay (__showServerUrlManager) is gone
 const { test, expect } = require('@playwright/test');
+const fs = require('node:fs');
 
 test.setTimeout(60000);
 
@@ -31,167 +31,101 @@ function mockServer(page, hostPattern) {
   ]);
 }
 
-test.describe('Server URL manager (patch 043)', () => {
-  test('exposes __showServerUrlManager and __autoDetectStremioServer', async ({ page }) => {
+test.describe('Native Edit URL dialog integration (patch 043)', () => {
+  test('custom overlay is removed; dialog hooks + engine are exposed', async ({ page }) => {
     await page.goto('/');
     await page.waitForTimeout(1500);
     const types = await page.evaluate(() => ({
-      show: typeof window.__showServerUrlManager,
+      overlay: typeof window.__showServerUrlManager,
       detect: typeof window.__autoDetectStremioServer,
+      dialogDetect: typeof window.__serverDialogAutoDetect,
+      dialogTest: typeof window.__serverDialogTest,
     }));
-    expect(types.show).toBe('function');
+    expect(types.overlay).toBe('undefined');
     expect(types.detect).toBe('function');
+    expect(types.dialogDetect).toBe('function');
+    expect(types.dialogTest).toBe('function');
   });
 
-  test('overlay is non-fullscreen, has a URL input + actions, and is dismissible', async ({ page }) => {
-    await page.goto('/');
-    await page.waitForTimeout(1500);
-    const result = await page.evaluate(async () => {
-      window.__showServerUrlManager();
-      var el = document.getElementById('dv-server-url-manager');
-      if (!el) return { present: false };
-      var isFullscreen = (el.offsetWidth >= window.innerWidth - 2) && (el.offsetHeight >= window.innerHeight - 2);
-      var hasInput = !!el.querySelector('input');
-      var labels = Array.prototype.map.call(el.querySelectorAll('button'), function (b) { return (b.textContent || '').trim(); });
-      var close = Array.prototype.find.call(el.querySelectorAll('button'), function (b) { return /close/i.test(b.textContent || ''); });
-      if (close) close.click();
-      await new Promise((r) => setTimeout(r, 50));
-      return { present: true, isFullscreen: isFullscreen, hasInput: hasInput, labels: labels, dismissed: !document.getElementById('dv-server-url-manager') };
-    });
-    expect(result.present).toBe(true);
-    expect(result.isFullscreen).toBe(false);
-    expect(result.hasInput).toBe(true);
-    expect(result.dismissed).toBe(true);
-    const joined = result.labels.join(' | ');
-    expect(/save/i.test(joined)).toBe(true);
-    expect(/auto-detect/i.test(joined)).toBe(true);
-    expect(/reset/i.test(joined)).toBe(true);
-    expect(/close/i.test(joined)).toBe(true);
+  test('built settings.chunk.js wires Auto-Detect + ping into the native dialog', () => {
+    const src = fs.readFileSync('app/settings.chunk.js', 'utf8');
+    // Plain field: no live per-keystroke round-trip, commit once on Confirm.
+    expect(src).not.toContain('onChange: w');
+    expect(src).toContain('var _urlVal = t.settings().streamingServerUrl');
+    expect(src).toContain('if (_finalUrl) {');
+    expect(src).toContain('w(_finalUrl);');
+    // Auto-Detect button inside the native dialog.
+    expect(src).toContain('label: "Auto-Detect"');
+    expect(src).toContain('window.__serverDialogAutoDetect()');
+    // Reachability ping after Confirm.
+    expect(src).toContain('window.__serverDialogTest(_finalUrl)');
+    // Custom overlay entry point fully gone.
+    expect(src).not.toContain('__showServerUrlManager');
+    // The Vidaa TV section kept its other entries.
+    expect(src).toContain('Quiet Player Mode');
+    expect(src).toContain('Playback Diagnostics');
+    expect(src).toContain('Exit Stremio');
   });
 
-  test('Back key (Escape) closes the overlay', async ({ page }) => {
-    await page.goto('/');
-    await page.waitForTimeout(1500);
-    const dismissed = await page.evaluate(() => {
-      window.__showServerUrlManager();
-      var el = document.getElementById('dv-server-url-manager');
-      el.dispatchEvent(new KeyboardEvent('keydown', { keyCode: 27, bubbles: true }));
-      return !document.getElementById('dv-server-url-manager');
-    });
-    expect(dismissed).toBe(true);
-  });
-
-  test('Backspace while typing in the input does NOT close the overlay', async ({ page }) => {
-    await page.goto('/');
-    await page.waitForTimeout(1500);
-    const stillOpen = await page.evaluate(() => {
-      window.__showServerUrlManager();
-      var el = document.getElementById('dv-server-url-manager');
-      var input = el.querySelector('input');
-      input.dispatchEvent(new KeyboardEvent('keydown', { keyCode: 8, bubbles: true, cancelable: true }));
-      return !!document.getElementById('dv-server-url-manager');
-    });
-    expect(stillOpen).toBe(true);
-  });
-
-  test('input pre-fills with the configured (non-default) server URL', async ({ page }) => {
-    await page.goto('/');
-    await page.waitForTimeout(1500);
-    const value = await page.evaluate(() => {
-      window.core = { getState: function () { return Promise.resolve(null); }, dispatch: function () { return Promise.resolve(); } };
-      window.__setStremioServerUrl('http://192.168.9.9:11470');
-      window.__showServerUrlManager();
-      return document.querySelector('#dv-server-url-manager input').value;
-    });
-    expect(value).toBe('http://192.168.9.9:11470');
-  });
-
-  test('Save & Test with a reachable server: shows Connected and persists the URL', async ({ page }) => {
+  test('Confirm pings the saved URL and toasts the result (reachable)', async ({ page }) => {
     await mockServer(page, /helper\.test/);
     await page.goto('/');
     await page.waitForTimeout(1500);
-    const result = await page.evaluate(async () => {
-      window.core = { getState: function () { return Promise.resolve(null); }, dispatch: function () { return Promise.resolve(); } };
-      window.__showServerUrlManager();
-      var el = document.getElementById('dv-server-url-manager');
-      el.querySelector('input').value = 'http://helper.test:11470';
-      var save = Array.prototype.find.call(el.querySelectorAll('button'), function (b) { return /save/i.test(b.textContent || ''); });
-      save.click();
-      await new Promise((r) => setTimeout(r, 1500));
-      return {
-        status: document.getElementById('dv-server-url-status').textContent,
-        ls: localStorage.getItem('stremio_server_url'),
-        global: window.__STREMIO_SERVER_URL__,
-      };
+    await page.evaluate(() => window.__serverDialogTest('http://helper.test:11470'));
+    // The sticky "Checking …" toast appears first; wait for the final verdict.
+    const text = await page.evaluate(async () => {
+      var start = Date.now();
+      while (Date.now() - start < 5000) {
+        var el = document.getElementById('dv-server-toast');
+        var t = el ? (el.textContent || '') : '';
+        if (t && !/checking/i.test(t)) return t;
+        await new Promise((r) => setTimeout(r, 100));
+      }
+      return '';
     });
-    expect(result.status).toMatch(/connected/i);
-    expect(result.ls).toBe('http://helper.test:11470');
-    expect(result.global).toBe('http://helper.test:11470');
+    expect(text).toMatch(/reachable/i);
+    expect(text).toMatch(/4\.20\.0|v4/i);
   });
 
-  test('Save & Test with an unreachable server: honest failure, URL still saved', async ({ page }) => {
+  test('Confirm pings the saved URL and toasts the result (unreachable/timeout)', async ({ page }) => {
+    await page.goto('/');
+    await page.waitForTimeout(1500);
+    await page.evaluate(() => window.__serverDialogTest('http://10.255.255.1:11470'));
+    await new Promise((r) => setTimeout(r, 4000)); // TEST_TIMEOUT_MS = 3000
+    const text = await page.evaluate(() => {
+      var el = document.getElementById('dv-server-toast');
+      return el ? el.textContent : '';
+    });
+    expect(text).toMatch(/not reachable|timed out/i);
+  });
+
+  test('Auto-Detect fills the dialog field with the found server, user still confirms', async ({ page }) => {
+    await mockServer(page, /127\.0\.0\.1/);
     await page.goto('/');
     await page.waitForTimeout(1500);
     const result = await page.evaluate(async () => {
-      window.core = { getState: function () { return Promise.resolve(null); }, dispatch: function () { return Promise.resolve(); } };
-      window.__showServerUrlManager();
-      var el = document.getElementById('dv-server-url-manager');
-      el.querySelector('input').value = 'http://10.255.255.1:11470'; // non-routable → probe times out
-      var save = Array.prototype.find.call(el.querySelectorAll('button'), function (b) { return /save/i.test(b.textContent || ''); });
-      save.click();
-      await new Promise((r) => setTimeout(r, 4000)); // TEST_TIMEOUT_MS = 3000
-      return {
-        status: document.getElementById('dv-server-url-status').textContent,
-        ls: localStorage.getItem('stremio_server_url'),
-      };
+      // Isolate: make our dummy the only text input on the page so the
+      // best-effort fill (document.querySelector) targets it deterministically.
+      Array.prototype.forEach.call(document.querySelectorAll('input'), function (i) { i.remove(); });
+      var inp = document.createElement('input');
+      inp.type = 'text';
+      document.body.appendChild(inp);
+      window.__serverDialogAutoDetect({ extraCandidates: ['127.0.0.1'] });
+      var start = Date.now();
+      while (Date.now() - start < 10000) {
+        var el = document.getElementById('dv-server-toast');
+        if (el && /found/i.test(el.textContent || '')) break;
+        await new Promise((r) => setTimeout(r, 100));
+      }
+      var el2 = document.getElementById('dv-server-toast');
+      return { filled: inp.value, toast: el2 ? el2.textContent : '' };
     });
-    expect(result.status).toMatch(/not reachable|timed out/i);
-    expect(result.ls).toBe('http://10.255.255.1:11470');
+    expect(result.filled).toBe('http://127.0.0.1:11470');
+    expect(result.toast).toMatch(/found/i);
+    expect(result.toast).toMatch(/confirm/i);
   });
 
-  test('Save & Test with an empty input shows guidance and changes nothing', async ({ page }) => {
-    await page.goto('/');
-    await page.waitForTimeout(1500);
-    const result = await page.evaluate(async () => {
-      localStorage.removeItem('stremio_server_url');
-      window.__STREMIO_SERVER_URL__ = 'http://127.0.0.1:11470';
-      window.__showServerUrlManager();
-      var el = document.getElementById('dv-server-url-manager');
-      var save = Array.prototype.find.call(el.querySelectorAll('button'), function (b) { return /save/i.test(b.textContent || ''); });
-      save.click();
-      await new Promise((r) => setTimeout(r, 200));
-      return {
-        status: document.getElementById('dv-server-url-status').textContent,
-        ls: localStorage.getItem('stremio_server_url'),
-      };
-    });
-    expect(result.status).toMatch(/type the server address|auto-detect/i);
-    expect(result.ls).toBeNull();
-  });
-
-  test('Reset to Default restores the built-in sentinel and clears the input', async ({ page }) => {
-    await page.goto('/');
-    await page.waitForTimeout(1500);
-    const result = await page.evaluate(async () => {
-      window.core = { getState: function () { return Promise.resolve(null); }, dispatch: function () { return Promise.resolve(); } };
-      window.__setStremioServerUrl('http://192.168.9.9:11470');
-      window.__showServerUrlManager();
-      var el = document.getElementById('dv-server-url-manager');
-      var reset = Array.prototype.find.call(el.querySelectorAll('button'), function (b) { return /reset/i.test(b.textContent || ''); });
-      reset.click();
-      await new Promise((r) => setTimeout(r, 200));
-      return {
-        ls: localStorage.getItem('stremio_server_url'),
-        global: window.__STREMIO_SERVER_URL__,
-        inputValue: el.querySelector('input').value,
-      };
-    });
-    expect(result.ls).toBe('http://127.0.0.1:11470');
-    expect(result.global).toBe('http://127.0.0.1:11470');
-    expect(result.inputValue).toBe('');
-  });
-
-  test('__autoDetectStremioServer finds a server from extraCandidates and reports it', async ({ page }) => {
+  test('engine finds a server from extraCandidates and reports progress', async ({ page }) => {
     await mockServer(page, /127\.0\.0\.1/);
     await page.goto('/');
     await page.waitForTimeout(1500);
@@ -210,8 +144,21 @@ test.describe('Server URL manager (patch 043)', () => {
     expect(found.progressCalls).toBeGreaterThan(0);
   });
 
-  test('__autoDetectStremioServer resolves null when nothing answers', async ({ page }) => {
-    // Abort every probe so the sweep exhausts quickly.
+  test('engine sweeps the configured /24 subnet first', async ({ page }) => {
+    await mockServer(page, /192\.168\.1\.50/);
+    await page.goto('/');
+    await page.waitForTimeout(1500);
+    const found = await page.evaluate(() => {
+      window.__STREMIO_SERVER_URL__ = 'http://192.168.1.99:11470';
+      return new Promise((resolve) => {
+        window.__autoDetectStremioServer({}, function () {}, function (res) { resolve(res); });
+      });
+    });
+    expect(found).not.toBeNull();
+    expect(found.url).toBe('http://192.168.1.50:11470');
+  });
+
+  test('engine resolves null when nothing answers', async ({ page }) => {
     await page.route(/heartbeat|\/settings/, (route) => route.abort());
     await page.goto('/');
     await page.waitForTimeout(1500);
@@ -221,61 +168,6 @@ test.describe('Server URL manager (patch 043)', () => {
       });
     });
     expect(found).toBeNull();
-  });
-
-  test('UI Auto-Detect sweeps the configured subnet first, finds and saves the server', async ({ page }) => {
-    await mockServer(page, /192\.168\.1\.50/);
-    await page.goto('/');
-    await page.waitForTimeout(1500);
-    const result = await page.evaluate(async () => {
-      window.core = { getState: function () { return Promise.resolve(null); }, dispatch: function () { return Promise.resolve(); } };
-      // A configured server on 192.168.1.x → its /24 is swept FIRST, so the
-      // mock at 192.168.1.50 is found without touching 192.168.0.x.
-      window.__setStremioServerUrl('http://192.168.1.99:11470');
-      window.__showServerUrlManager();
-      var el = document.getElementById('dv-server-url-manager');
-      var detect = Array.prototype.find.call(el.querySelectorAll('button'), function (b) { return /auto-detect/i.test(b.textContent || ''); });
-      detect.click();
-      var start = Date.now();
-      var statusEl = document.getElementById('dv-server-url-status');
-      while (Date.now() - start < 20000) {
-        if (/found/i.test(statusEl.textContent || '')) break;
-        await new Promise((r) => setTimeout(r, 150));
-      }
-      return {
-        status: statusEl.textContent,
-        ls: localStorage.getItem('stremio_server_url'),
-        inputValue: el.querySelector('input').value,
-      };
-    });
-    expect(result.status).toMatch(/found/i);
-    expect(result.ls).toBe('http://192.168.1.50:11470');
-    expect(result.inputValue).toBe('http://192.168.1.50:11470');
-  });
-
-  test('UI Auto-Detect is manual-only: pressing again stops the scan', async ({ page }) => {
-    await page.route(/heartbeat|\/settings/, (route) => route.abort());
-    await page.goto('/');
-    await page.waitForTimeout(1500);
-    const result = await page.evaluate(async () => {
-      window.__showServerUrlManager();
-      var el = document.getElementById('dv-server-url-manager');
-      var detect = Array.prototype.find.call(el.querySelectorAll('button'), function (b) { return /auto-detect/i.test(b.textContent || ''); });
-      detect.click(); // start
-      var scanning = /stop/i.test(detect.textContent || '');
-      detect.click(); // stop
-      await new Promise((r) => setTimeout(r, 300));
-      return {
-        scanning: scanning,
-        status: document.getElementById('dv-server-url-status').textContent,
-        buttonLabel: detect.textContent,
-        ls: localStorage.getItem('stremio_server_url'),
-      };
-    });
-    expect(result.scanning).toBe(true);
-    expect(result.status).toMatch(/stopped/i);
-    expect(result.buttonLabel).toMatch(/auto-detect/i);
-    expect(result.ls).toBeNull();
   });
 
   test('Auto-Detect never runs on its own: no scan network activity at startup', async ({ page }) => {
@@ -290,5 +182,11 @@ test.describe('Server URL manager (patch 043)', () => {
     await page.goto('/');
     await page.waitForTimeout(4000);
     expect(sweepRequests).toBe(0);
+  });
+
+  test('shared TextField suppresses TV-keyboard autocompletion', () => {
+    const src = fs.readFileSync('app/main.js', 'utf8');
+    expect(src).toContain('<input type=text autocomplete=off autocorrect=off autocapitalize=off>');
+    expect(src).not.toContain('"<input type=text>";');
   });
 });
