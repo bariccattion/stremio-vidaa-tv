@@ -573,7 +573,7 @@ test.describe('Installer flows', () => {
     expect(args.icon1).toBe('http://localhost:8080/shared/icon.png');
     expect(args.icon2).toBe('http://localhost:8080/shared/icon.png');
     expect(args.icon3).toBe('http://localhost:8080/shared/icon.png');
-    expect(args.appUrl).toContain('https://noobygains.github.io/stremio-vidaa-tv/');
+    expect(args.appUrl).toContain('https://bariccattion.github.io/stremio-vidaa-tv/');
   });
 
   test('installer diagnostics include domain registration and install results', async ({ page }) => {

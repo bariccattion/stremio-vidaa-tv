@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <a href="https://noobygains.github.io/stremio-vidaa-tv/"><img src="https://img.shields.io/website?label=GitHub%20Pages&logo=github&up_message=online&down_message=offline&url=https%3A%2F%2Fnoobygains.github.io%2Fstremio-vidaa-tv%2F" alt="Pages status" /></a>
+  <a href="https://bariccattion.github.io/stremio-vidaa-tv/"><img src="https://img.shields.io/website?label=GitHub%20Pages&logo=github&up_message=online&down_message=offline&url=https%3A%2F%2Fbariccattion.github.io%2Fstremio-vidaa-tv%2F" alt="Pages status" /></a>
   <img src="https://img.shields.io/badge/build-v7-orange" alt="Build version" />
   <img src="https://img.shields.io/badge/core-stremio--core--web%20v5%20(0.55.0)-purple" alt="Core version" />
   <img src="https://img.shields.io/badge/platform-VIDAA%20OS-green" alt="Platform" />
@@ -53,7 +53,7 @@ No streaming server required for most users. With Real-Debrid + Torrentio, strea
 1. On your TV/projector, open the **Internet Browser** (Home &gt; Apps &gt; "Browser" or the globe icon — check **All Apps** if you don't see it, some firmware hides it by default).
 2. Go to:
    ```
-   https://noobygains.github.io/stremio-vidaa-tv/
+   https://bariccattion.github.io/stremio-vidaa-tv/
    ```
 3. Bookmark the page. Open it from the bookmark any time you want to use Stremio.
 
@@ -110,7 +110,7 @@ Or install [Stremio desktop](https://www.stremio.com/downloads) on a PC, which i
 **Connect it to the app** by adding `?server=` to the URL once:
 
 ```
-https://noobygains.github.io/stremio-vidaa-tv/?server=http://192.168.1.50:11470
+https://bariccattion.github.io/stremio-vidaa-tv/?server=http://192.168.1.50:11470
 ```
 
 Replace `192.168.1.50` with your server's IP. The setting is saved automatically. You can also change it inside the app at **Settings > Server > Edit URL**.
@@ -216,7 +216,7 @@ These were already in the build before the above patches:
 
 ## Troubleshooting
 
-> **On projectors, Method 2 is the reliable path.** Most current Hisense projectors (PX3-Pro, M2 Pro, C2, C2 Mini, Smart Mini C2) silently drop `Hisense_installApp` even when it returns success — the launcher icon never appears no matter how many times you restart. Just bookmark `noobygains.github.io/stremio-vidaa-tv` in the TV's Internet Browser and open it from there. It works identically to the installed version.
+> **On projectors, Method 2 is the reliable path.** Most current Hisense projectors (PX3-Pro, M2 Pro, C2, C2 Mini, Smart Mini C2) silently drop `Hisense_installApp` even when it returns success — the launcher icon never appears no matter how many times you restart. Just bookmark `bariccattion.github.io/stremio-vidaa-tv` in the TV's Internet Browser and open it from there. It works identically to the installed version.
 
 | Problem | Solution |
 |---|---|
