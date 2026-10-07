@@ -596,6 +596,146 @@ test.describe('Installer flows', () => {
     expect(blob).toContain('"status": "ok"');
     expect(blob).toContain('"callbackStatus": "accepted"');
   });
+
+  test('installer writes the app registry directly when HiUtils_createRequest is available', async ({ page }) => {
+    const existingRegistry = {
+      AppInfo: [
+        { Id: 'someotherapp', AppName: 'Other', URL: 'https://example.com' },
+        { Id: 'stremio-vidaa', AppName: 'Stremio (old entry)', URL: 'https://old.example.com' }
+      ]
+    };
+
+    await page.addInitScript(({ existingRegistry }) => {
+      window.__calls = [];
+      window.Hisense_AddInsecureDomain = () => 0;
+      window.Hisense_installApp = function() {
+        window.__calls.push({ api: 'installApp' });
+      };
+      window.HiUtils_createRequest = function(type, opts) {
+        window.__calls.push({ api: 'HiUtils', type, opts });
+        if (type === 'fileRead') return { ret: 1, msg: JSON.stringify(existingRegistry) };
+        return { ret: 1 };
+      };
+    }, { existingRegistry });
+
+    await page.goto('/installer/');
+    await page.locator('#btnInstall').click();
+    await page.waitForFunction(() => {
+      const el = document.getElementById('diagText');
+      return el && el.value.indexOf('"method": "registry"') !== -1;
+    });
+
+    const calls = await page.evaluate(() => window.__calls);
+    const read = calls.find(c => c.api === 'HiUtils' && c.type === 'fileRead');
+    const write = calls.find(c => c.api === 'HiUtils' && c.type === 'fileWrite');
+    expect(read.opts.path).toBe('websdk/Appinfo.json');
+    expect(write.opts.path).toBe('websdk/Appinfo.json');
+    expect(write.opts.mode).toBe(6);
+
+    const written = JSON.parse(write.opts.writedata);
+    expect(written.AppInfo).toHaveLength(2);
+    const stremio = written.AppInfo.find(a => a.Id === 'stremio-vidaa');
+    expect(stremio.URL).toContain('https://bariccattion.github.io/stremio-vidaa-tv/');
+    expect(stremio.Type).toBe('Browser');
+    expect(stremio.StoreType).toBe('custom');
+    // Other apps in the registry are preserved untouched
+    expect(written.AppInfo.find(a => a.Id === 'someotherapp').URL).toBe('https://example.com');
+    // Registry-first: the legacy API is never reached when the write succeeds
+    expect(calls.find(c => c.api === 'installApp')).toBeUndefined();
+
+    const blob = await page.locator('#diagText').inputValue();
+    expect(blob).toContain('"registryWrite": true');
+    expect(blob).toContain('"readRet": "ok"');
+  });
+
+  test('installer falls back to Hisense_installApp when the app registry cannot be read', async ({ page }) => {
+    await page.addInitScript(() => {
+      window.__calls = [];
+      window.Hisense_AddInsecureDomain = () => 0;
+      window.Hisense_installApp = function(appId, appName, icon1, icon2, icon3, appUrl, storeType, cb) {
+        window.__calls.push('installApp');
+        if (typeof cb === 'function') cb(0);
+      };
+      window.HiUtils_createRequest = function(type) {
+        window.__calls.push('HiUtils:' + type);
+        return { ret: 0, msg: 'denied' };
+      };
+    });
+
+    await page.goto('/installer/');
+    await page.locator('#btnInstall').click();
+    await page.waitForFunction(() => window.__calls.indexOf('installApp') !== -1);
+
+    const calls = await page.evaluate(() => window.__calls);
+    expect(calls).toContain('HiUtils:fileRead');
+    expect(calls).toContain('installApp');
+    // The registry was never written blind after the failed read
+    expect(calls).not.toContain('HiUtils:fileWrite');
+
+    const blob = await page.locator('#diagText').inputValue();
+    expect(blob).toContain('"readRet": "failed"');
+    expect(blob).toContain('"error": "Appinfo.json unreadable');
+  });
+
+  test('uninstall removes only the Stremio entry from the app registry', async ({ page }) => {
+    const existingRegistry = {
+      AppInfo: [
+        { Id: 'someotherapp', AppName: 'Other' },
+        { Id: 'stremio-vidaa', AppName: 'Stremio' }
+      ]
+    };
+
+    await page.addInitScript(({ existingRegistry }) => {
+      window.__writes = [];
+      window.HiUtils_createRequest = function(type, opts) {
+        if (type === 'fileRead') return { ret: 1, msg: JSON.stringify(existingRegistry) };
+        if (type === 'fileWrite') window.__writes.push(opts.writedata);
+        return { ret: 1 };
+      };
+    }, { existingRegistry });
+
+    await page.goto('/installer/');
+    await page.locator('#btnUninstall').click();
+    await page.waitForFunction(() => window.__writes.length > 0);
+
+    const written = JSON.parse(await page.evaluate(() => window.__writes[0]));
+    expect(written.AppInfo).toHaveLength(1);
+    expect(written.AppInfo[0].Id).toBe('someotherapp');
+  });
+
+  test('in-app install banner writes the app registry when available', async ({ browser }) => {
+    const context = await browser.newContext();
+    const page = await context.newPage();
+    const existingRegistry = { AppInfo: [{ Id: 'someotherapp' }] };
+
+    await page.addInitScript(({ existingRegistry }) => {
+      window.Hisense_GetOSVersion = () => 'mock-os';
+      window.__legacyCalls = 0;
+      window.Hisense_installApp = function(a, b, c, d, e, f, g, cb) {
+        window.__legacyCalls++;
+        if (typeof cb === 'function') cb(0);
+      };
+      window.__registryWrites = [];
+      window.HiUtils_createRequest = function(type, opts) {
+        if (type === 'fileRead') return { ret: 1, msg: JSON.stringify(existingRegistry) };
+        if (type === 'fileWrite') window.__registryWrites.push(opts.writedata);
+        return { ret: 1 };
+      };
+    }, { existingRegistry });
+
+    await page.goto('/');
+    await expect(page.locator('#install-banner')).toBeVisible({ timeout: 7000 });
+    await page.locator('#install-banner button').first().click();
+    await expect(page.locator('#install-banner span')).toContainText('app registry');
+
+    const written = JSON.parse(await page.evaluate(() => window.__registryWrites[0]));
+    const entry = written.AppInfo.find(a => a.Id === 'stremio-vidaa');
+    expect(entry.URL).toBe('https://bariccattion.github.io/stremio-vidaa-tv/');
+    expect(await page.evaluate(() => window.__legacyCalls)).toBe(0);
+    expect(await page.evaluate(() => localStorage.getItem('stremio_install_banner_method'))).toBe('registry');
+
+    await context.close();
+  });
 });
 
 test.describe('Diagnostics', () => {

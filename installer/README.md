@@ -39,8 +39,12 @@ Step 5: Revert DNS to automatic and restart TV
 
 1. **Selective DNS spoof** -- The server resolves `vidaahub.com` to your PC and forwards other domains normally, so the TV can still reach external hosts like GitHub Pages.
 2. **HTTPS server** -- Serves the installer page with a self-signed certificate. The TV browser will show a certificate warning; accept it to proceed.
-3. **Install** -- The installer page calls `Hisense_installApp()` (only available on the `vidaahub.com` domain) to register Stremio as a web app on the TV. The installer UI and icon are served locally to avoid remote asset failures during this step.
+3. **Install (two paths, tried in order)** --
+   - **App registry write (preferred):** newer firmware accepts `Hisense_installApp()`, reports success, and then never adds the launcher entry. When the TV exposes `HiUtils_createRequest` (technique documented by [weinzii/vidaa-edge](https://github.com/weinzii/vidaa-edge)), the installer instead reads `websdk/Appinfo.json` -- the launcher's own web-app list -- appends/updates the Stremio entry, and writes it back directly. A full TV restart then shows Stremio at the end of the app list. If the registry cannot be read, the installer refuses to overwrite it (never a blind write) and falls back to the legacy path.
+   - **Legacy API:** `Hisense_installApp()` (only available on the `vidaahub.com` domain) registers Stremio as a web app on the TV.
 4. **Revert** -- After installation, set your TV DNS back to automatic and restart. Stremio will appear in your app list.
+
+The diagnostics panel on the installer page records which path ran (`install.method`, `registryInstall`) -- paste that blob into a GitHub issue if the icon still does not appear.
 
 ## Troubleshooting
 
@@ -50,7 +54,7 @@ Step 5: Revert DNS to automatic and restart TV
 | `OpenSSL CLI not found` | Install OpenSSL or run from Git Bash on Windows |
 | TV shows certificate error | This is expected with a self-signed cert -- accept/proceed past the warning |
 | Install button does nothing | Make sure you are on a VIDAA TV and accessed via `https://vidaahub.com` (not the raw IP) |
-| App does not appear after install | Restart the TV fully (not just sleep). If the launcher entry still does not appear, your firmware may block `Hisense_installApp()` even when it reports success; use the direct browser method instead. |
+| App does not appear after install | Restart the TV fully (not just sleep). The installer now writes the app registry (`websdk/Appinfo.json`) directly when the TV exposes `HiUtils_createRequest`, which lands the entry even on firmware that silently drops `Hisense_installApp()`. If the diagnostics blob shows the registry write failed or was unavailable, use [Sidee](https://github.com/Empi9245/Sidee) or the direct browser method instead. |
 
 ## Security Note
 

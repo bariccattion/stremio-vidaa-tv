@@ -32,7 +32,7 @@ This project was originally built to get Stremio working on a **Hisense PX3-Pro 
 
 - **Full Stremio**, not Lite — community addons (Torrentio, etc.), streaming server support, transcoding, external debrid services all work.
 - **Modern stremio-core v5 WASM engine** (currently **0.64.1**, synced from Stremio's official releases) grafted onto the original Stremio Theater v1.9.2 TV frontend (built for D-pad navigation and 10-foot viewing distance — perfect for projectors).
-- **Projector-first defaults** — no full-screen error overlays blocking your remote, large UI sizing, Method 2 (bookmark) as the reliable install path.
+- **Projector-first defaults** — no full-screen error overlays blocking your remote, large UI sizing, the bookmark (Method 1) as the reliable install path.
 - **Every custom feature is a toggle** in Settings &gt; Vidaa TV so you can turn anything on or off per device.
 - **Reverse-engineered VIDAA integration** for native player handoff, hardware codec detection, trusted-domain registration, and launcher installation.
 
@@ -46,7 +46,7 @@ No streaming server required for most users. With Real-Debrid + Torrentio, strea
 
 ## Installation
 
-**Projector owners: use Method 1 (bookmark). It works everywhere and takes 30 seconds.** The installer (Method 2) only adds a permanent launcher icon on certain retail TVs — on projectors and most newer firmware, the install API silently refuses even when it reports success. The bookmark version is identical, just launched from the TV Browser instead of the launcher.
+**Start with Method 1 (bookmark) — it works everywhere and takes 30 seconds.** If you want a permanent launcher icon, prefer Method 2 (Sidee): it registers the tile over the same channel the official Hisense phone app uses, so it keeps working on newer firmware where browser-based install APIs have been restricted. The one-click installer (Method 3) also works on many TVs thanks to its app-registry write, but needs a PC and a temporary DNS change.
 
 ### Method 1: Bookmark in the TV Browser (works on everything)
 
@@ -59,9 +59,43 @@ No streaming server required for most users. With Real-Debrid + Torrentio, strea
 
 That's it. The app caches itself via a Service Worker so it launches instantly after the first load.
 
-### Method 2: One-Click Installer (retail TVs only — not reliable on projectors)
+### Method 2: Sidee — permanent launcher tile (recommended on newer firmware)
 
-Adds a permanent launcher icon. Requires a PC on the same network. Only works on some retail TVs; on projectors and newer VIDAA builds the firmware accepts the install call but never actually adds the icon, so just use Method 1 there.
+[Sidee](https://github.com/Empi9245/Sidee) installs web apps as permanent launcher tiles over the same local control channel the official Hisense phone app uses (SSDP discovery + PIN pairing, MQTT/TLS). Because it goes through the TV's own app-catalog mechanism, it keeps working on newer firmware where `Hisense_installApp` is silently dropped. No developer mode, no DNS changes.
+
+1. Download Sidee from its [releases page](https://github.com/Empi9245/Sidee/releases) (Windows ZIP or macOS) and run it — no admin rights needed, nothing installs.
+2. Its dashboard opens in your PC browser. Make sure the PC and TV are on the same network, then press **Find TV**.
+3. Click **Request code** — a 4-digit PIN appears on the TV screen. Enter it in the dashboard and confirm.
+4. Pick **Stremio**, optionally paste your streaming-server URL, and confirm. The tile persists across reboots — Sidee doesn't need to keep running.
+
+**Installing this repo's build instead of the upstream one.** Sidee's built-in Stremio option installs the upstream `NoobyGains` deployment and has no custom-URL option. To install the build from this repository:
+
+1. Clone Sidee and install its requirements:
+   ```bash
+   git clone https://github.com/Empi9245/Sidee.git
+   cd Sidee
+   pip install -r requirements.txt
+   ```
+2. Edit the `stremio` preset in `core/presets.py` to point at this deployment (keep `app_id` as `stremiodebug` — it overwrites any old Stremio tile instead of duplicating it):
+   ```python
+   "stremio": {
+       "name": "Stremio",
+       "app_id": "stremiodebug",
+       "url": "https://bariccattion.github.io/stremio-vidaa-tv/?install_source=sidee",
+       "image": "https://bariccattion.github.io/stremio-vidaa-tv/icon.png",
+       ...
+   }
+   ```
+3. Run `python sidee.py` and pair as described above.
+
+Sidee's optional streaming-server field is appended to the URL as `&server=` — this app already understands it (see [Streaming Server](#streaming-server-optional)).
+
+### Method 3: One-Click Installer (DNS-based, with app-registry write fallback)
+
+Adds a permanent launcher icon. Requires a PC on the same network. The installer tries two paths, in order:
+
+- **App registry write (preferred):** when the TV exposes `HiUtils_createRequest`, the installer reads `websdk/Appinfo.json` — the launcher's own web-app list — and writes the Stremio entry into it directly. This lands the icon even on firmware that accepts `Hisense_installApp`, reports success, and then never adds the entry (the silent drop). Requires a full TV restart afterward. If the registry can't be read, the installer never writes blind — it falls back to the legacy path.
+- **Legacy API:** the classic `Hisense_installApp()` call, as before.
 
 1. Download and run the installer:
    ```bash
@@ -73,11 +107,11 @@ Adds a permanent launcher icon. Requires a PC on the same network. Only works on
 3. On your **TV**: open the **Internet Browser** and go to `https://vidaahub.com`.
 4. Press **Install Stremio**.
 5. Revert DNS to automatic and fully restart your TV (unplug for 10 seconds if needed).
-6. If Stremio appears in the launcher — great. If not, your firmware blocks launcher installation; fall back to Method 1.
+6. If Stremio appears in the launcher — great. If not, check the diagnostics panel on the installer page (it records which install path ran), and fall back to Method 1 or Method 2.
 
 The installer only spoofs `vidaahub.com`, forwards normal DNS requests upstream, and serves the install UI/icons locally to avoid GitHub Pages lookups during installation.
 
-### Method 3: Self-hosted
+### Method 4: Self-hosted
 
 ```bash
 git clone https://github.com/NoobyGains/stremio-vidaa-tv.git
@@ -117,6 +151,8 @@ https://bariccattion.github.io/stremio-vidaa-tv/?server=http://192.168.1.50:1147
 
 Replace `192.168.1.50` with your server's IP.
 
+**Server shows "Offline" but streaming works?** The status row reflects a one-shot check the app core makes against the server — it doesn't retry, so a single hiccup (or a TV browser blocking direct checks from an https page to an http server) can leave it stuck on "Offline" even though playback works. The app self-heals this within about a minute, and the row also honors the app's own periodic health check. For ground truth, press the **Green** remote key (outside the player): that overlay shows the live health probe. If it reports offline on a GitHub Pages (https) installation while streams play fine, your TV blocks cross-origin checks — install via the http installer for full server integration.
+
 ## Tested Codec Support (Hisense PX1HE / 100L5H)
 
 Tested via live hardware scanning and real stream playback:
@@ -149,7 +185,7 @@ DRM: Widevine, PlayReady, and ClearKey are all supported.
 | **Resolution indicator** | Shows current playback quality (4K/1080p/720p) in the player |
 | **Splash screen** | Loading screen with progress bar while WASM initialises |
 | **Error messages** | Codec-specific, actionable messages instead of generic "video not supported" |
-| **One-click install** | Permanent launcher icon via the included installer |
+| **One-click install** | Permanent launcher icon via the included installer (app-registry write with legacy fallback) or via Sidee |
 | **Service Worker** | Caches the entire app for instant boot after first load |
 | **720p zoom fix** | Auto-corrects viewport scaling on projectors and 720p-reporting TVs |
 | **Watchdog** | Auto-recovers from UI freezes |
@@ -213,7 +249,7 @@ These were already in the build before the above patches:
 - **VIDAA keyboard fix** — 3-layer interception for the VIDAA on-screen keyboard
 - **Native VIDAA player handoff** — Yellow button opens current stream in the system player for full DV/HDR hardware decode
 - **VIDAA API integration** — Trusted domain registration, device capability detection, real-time video state observers
-- **One-click launcher install** — Permanent TV launcher icon via `Hisense_installApp`
+- **One-click launcher install** — Registry write of `websdk/Appinfo.json` with the legacy `Hisense_installApp` call as fallback, in both the installer and the in-app banner
 - **Channel Up/Down quick seek** — 60-second skip forward/back
 - **720p viewport correction** — Auto-zoom fix for projectors and 720p-reporting TVs
 - **Memory pressure monitoring** — Warns when JS heap usage exceeds 85%
@@ -231,13 +267,14 @@ These were already in the build before the above patches:
 
 ## Troubleshooting
 
-> **On projectors, Method 2 is the reliable path.** Most current Hisense projectors (PX3-Pro, M2 Pro, C2, C2 Mini, Smart Mini C2) silently drop `Hisense_installApp` even when it returns success — the launcher icon never appears no matter how many times you restart. Just bookmark `bariccattion.github.io/stremio-vidaa-tv` in the TV's Internet Browser and open it from there. It works identically to the installed version.
+> **On projectors, Method 1 is the reliable path.** Most current Hisense projectors (PX3-Pro, M2 Pro, C2, C2 Mini, Smart Mini C2) silently drop `Hisense_installApp` even when it returns success — the launcher icon never appears no matter how many times you restart. The installer now writes the app registry directly to get around this, but the simplest answer remains: bookmark `bariccattion.github.io/stremio-vidaa-tv` in the TV's Internet Browser and open it from there. It works identically to the installed version.
 
 | Problem | Solution |
 |---|---|
 | **Installer: "Install" button does nothing** | You need Developer Mode. Normally: Settings > System > About > press **1234** on the remote. **Your projector remote has no number buttons?** See "No number buttons on your remote" below. |
-| **Installer says success but no launcher app appears** | This is the firmware-level silent-drop on current Hisense projectors and newer VIDAA builds — not something we can fix. Skip the launcher, use **Method 2** (bookmark in the TV Browser). |
-| **No number buttons on your remote (projectors, M2/C2/PX3-Pro)** | Try in this order: (1) Install **RemoteNow** on your phone — its virtual numpad enters `1234` on the About screen; (2) Check **Settings > System > Developer Options** directly — some newer firmware has the toggle without needing `1234`; (3) Try the hidden key sequence: **Home ×3, Up ×2, Right, Left, Right, Left, Right**; (4) Plug in a USB keyboard and type `1234`. If none of that works, skip Developer Mode entirely and use Method 2. |
+| **Installer says success but no launcher app appears** | The installer tries a direct app-registry write (`websdk/Appinfo.json`) first — make sure you fully restarted the TV (unplug 10s), not just standby, since registry installs only surface after a restart. Still nothing? Copy the diagnostics blob from the installer page into a GitHub issue, and use **Method 2** (Sidee) or **Method 1** (bookmark) in the meantime. |
+| **Sidee can't find or pair with the TV** | PC and TV must be on the same network (no VPN, no guest Wi-Fi). If the PIN expires, just request a new code. More details in [Sidee's README](https://github.com/Empi9245/Sidee). |
+| **No number buttons on your remote (projectors, M2/C2/PX3-Pro)** | Try in this order: (1) Install **RemoteNow** on your phone — its virtual numpad enters `1234` on the About screen; (2) Check **Settings > System > Developer Options** directly — some newer firmware has the toggle without needing `1234`; (3) Try the hidden key sequence: **Home ×3, Up ×2, Right, Left, Right, Left, Right**; (4) Plug in a USB keyboard and type `1234`. If none of that works, skip Developer Mode entirely — Sidee (Method 2) doesn't need it, and neither does the bookmark (Method 1). |
 | **Can't find the browser on TV** | The Internet Browser may be hidden. Go to Home > Apps > All Apps and look for "Browser" or a globe icon. |
 | **"Server Offline" in Settings** | Your streaming server must be running on a device on the same network. Test by visiting `http://<server-ip>:11470/heartbeat` in a browser. Most Real-Debrid users don't need a server at all. |
 | **Black screen during playback** | Could be: DV content in MP4 container (use MKV sources instead), content above 4K resolution, or an unsupported codec. The app detects stalled playback and offers options. |
@@ -301,13 +338,15 @@ This build is backed by reverse engineering of the VIDAA OS browser environment.
 Key discoveries:
 - DV+HDR content in MKV containers plays natively at 4K in the VIDAA browser (no transcoding required)
 - The `Hisense_installApp` API enables permanent launcher installation from trusted domains
+- The web-app launcher list lives in `websdk/Appinfo.json` and can be updated directly via `HiUtils_createRequest` — the fallback used when firmware silently drops `Hisense_installApp` (via [weinzii/vidaa-edge](https://github.com/weinzii/vidaa-edge))
 - Real-time video state observers (`Hisense_RegisterObserver`) provide live codec and HDR status
 - The `omi_platform.sendPlatformMessage` interface accepts native player handoff commands
 
 ## Credits
 
 - [Stremio](https://github.com/Stremio) — original Stremio web app, core, and sideload tooling
-- [weinzii/vidaa-edge](https://github.com/weinzii/vidaa-edge) — VIDAA development toolkit used for API reverse engineering
+- [weinzii/vidaa-edge](https://github.com/weinzii/vidaa-edge) — VIDAA development toolkit used for API reverse engineering, including the `websdk/Appinfo.json` registry-write install technique
+- [Empi9245/Sidee](https://github.com/Empi9245/Sidee) — PIN-paired launcher-tile installer over the official Hisense control channel
 - [Stremio/stremio-hisense-install](https://github.com/Stremio/stremio-hisense-install) — original sideload script
 
 ## Community

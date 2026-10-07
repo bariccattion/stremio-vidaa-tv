@@ -15,7 +15,8 @@
             'stremio_quiet_player',
             'stremio_auto_native_player_mkv',
             'stremio_auto_native_player',
-            'stremio_install_banner_last_success_at'
+            'stremio_install_banner_last_success_at',
+            'stremio_install_banner_method'
         ];
         var settings = {};
         for (var i = 0; i < trackedKeys.length; i++) {
@@ -34,8 +35,13 @@
             userAgent: navigator.userAgent,
             vidaaDetected: !!window.__VIDAA_DEVICE__,
             isVidaaHubDomain: window.location.hostname === 'vidaahub.com',
+            installSource: safeRead(function() {
+                var m = window.location.search.match(/[?&]install_source=([^&]+)/);
+                return m ? decodeURIComponent(m[1]) : null;
+            }, null),
             availableApis: {
                 installApp: safeRead(function() { return typeof Hisense_installApp === 'function'; }, false),
+                registryWrite: safeRead(function() { return typeof HiUtils_createRequest === 'function'; }, false),
                 addInsecureDomain: safeRead(function() { return typeof Hisense_AddInsecureDomain === 'function'; }, false),
                 getOSVersion: safeRead(function() { return typeof Hisense_GetOSVersion === 'function'; }, false),
                 registerObserver: safeRead(function() { return typeof Hisense_RegisterObserver === 'function'; }, false)
@@ -57,6 +63,7 @@
             },
             installBanner: {
                 lastSuccessAt: settings.stremio_install_banner_last_success_at,
+                method: settings.stremio_install_banner_method || null,
                 dismissedSession: safeRead(function() { return sessionStorage.getItem('stremio_install_banner_dismissed_session'); }, null)
             },
             trackedSettings: settings,

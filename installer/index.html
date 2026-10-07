@@ -358,12 +358,14 @@
 
   var APP_ID      = "stremio-vidaa";
   var APP_NAME    = "Stremio";
-  var BUILD_ID    = "ff086d7";
+  var BUILD_ID    = "e2a7b41";
   var INSTALL_ORIGIN = window.location.origin;
   var ICON_URL    = INSTALL_ORIGIN + "/shared/icon.png";
   var APP_URL     = "https://bariccattion.github.io/stremio-vidaa-tv/?install_source=method1";
   var STORE_TYPE  = "store";
   var GH_DOMAIN   = "bariccattion.github.io";
+  var APPINFO_PATH = "websdk/Appinfo.json";
+  var APPINFO_MODE = 6;
 
   var statusMsg   = document.getElementById("statusMsg");
   var progressWrap = document.getElementById("progressWrap");
@@ -374,7 +376,9 @@
   var btnCopyDiag = document.getElementById("btnCopyDiag");
   var diagText    = document.getElementById("diagText");
 
-  var isVidaa = (typeof Hisense_installApp === "function");
+  var hasLegacyInstall = (typeof Hisense_installApp === "function");
+  var hasRegistryApi = (typeof HiUtils_createRequest === "function");
+  var isVidaa = hasLegacyInstall || hasRegistryApi;
   var diagState = {
     build: BUILD_ID,
     page: "installer",
@@ -391,6 +395,7 @@
     availableApis: {
       installApp: typeof Hisense_installApp === "function",
       uninstallApp: typeof Hisense_uninstallApp === "function",
+      registryWrite: hasRegistryApi,
       addInsecureDomain: typeof Hisense_AddInsecureDomain === "function",
       getInsecureDomain: typeof Hisense_GetInsecureDomain === "function",
       getOSVersion: typeof Hisense_GetOSVersion === "function"
@@ -402,9 +407,22 @@
     },
     install: {
       attempted: false,
+      method: "not-run",
       callbackCode: null,
       callbackStatus: "not-run",
       exception: null
+    },
+    registryInstall: {
+      available: hasRegistryApi,
+      attempted: false,
+      readRet: null,
+      writeRet: null,
+      entryCount: null,
+      error: null
+    },
+    registryUninstall: {
+      attempted: false,
+      result: "not-run"
     }
   };
 
@@ -557,6 +575,101 @@
     diagState.install.launcherRefreshSent = sent;
   }
 
+  /* ---------- registry install (websdk/Appinfo.json) ---------- */
+
+  /* Newer firmware accepts Hisense_installApp, reports success, and then never
+   * adds the launcher entry. The web-app list itself lives in
+   * websdk/Appinfo.json and can be read/written directly through
+   * HiUtils_createRequest — the technique documented by
+   * github.com/weinzii/vidaa-edge. The registry path runs first whenever the
+   * API exists; the legacy call below remains as fallback. */
+  function readAppRegistry() {
+    var res = HiUtils_createRequest("fileRead", { path: APPINFO_PATH, mode: APPINFO_MODE });
+    if (!res || !res.ret) return null;
+    try {
+      var parsed = JSON.parse(res.msg);
+      if (!parsed || typeof parsed !== "object" || !Array.isArray(parsed.AppInfo)) return null;
+      return parsed;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function buildRegistryEntry() {
+    return {
+      Id: APP_ID,
+      AppName: APP_NAME,
+      Title: APP_NAME,
+      URL: APP_URL,
+      StartCommand: APP_URL,
+      IconURL: ICON_URL,
+      Icon_96: ICON_URL,
+      Image: ICON_URL,
+      Thumb: ICON_URL,
+      Type: "Browser",
+      InstallTime: new Date().toISOString().split("T")[0],
+      RunTimes: 0,
+      StoreType: "custom",
+      PreInstall: false
+    };
+  }
+
+  function writeAppRegistry(apps) {
+    return HiUtils_createRequest("fileWrite", {
+      path: APPINFO_PATH,
+      mode: APPINFO_MODE,
+      writedata: JSON.stringify(apps)
+    });
+  }
+
+  function installViaRegistry() {
+    diagState.registryInstall.attempted = true;
+    var apps = readAppRegistry();
+    diagState.registryInstall.readRet = apps ? "ok" : "failed";
+    if (!apps) {
+      /* Never write blind: rewriting a registry we could not read would wipe
+       * every installed web app. Bail out and let the legacy API try. */
+      diagState.registryInstall.error = "Appinfo.json unreadable — refusing to overwrite it";
+      renderDiagnostics();
+      return false;
+    }
+
+    var entry = buildRegistryEntry();
+    var idx = -1;
+    for (var i = 0; i < apps.AppInfo.length; i++) {
+      if (apps.AppInfo[i] && apps.AppInfo[i].Id === APP_ID) { idx = i; break; }
+    }
+    if (idx >= 0) {
+      apps.AppInfo[idx] = entry;
+    } else {
+      apps.AppInfo.push(entry);
+    }
+
+    var res = writeAppRegistry(apps);
+    diagState.registryInstall.writeRet = res ? res.ret : null;
+    diagState.registryInstall.entryCount = apps.AppInfo.length;
+    if (!res || !res.ret) {
+      diagState.registryInstall.error = (res && res.msg) ? String(res.msg) : "fileWrite returned no success";
+      renderDiagnostics();
+      return false;
+    }
+    renderDiagnostics();
+    return true;
+  }
+
+  function uninstallViaRegistry() {
+    var apps = readAppRegistry();
+    if (!apps) return false;
+    var idx = -1;
+    for (var i = 0; i < apps.AppInfo.length; i++) {
+      if (apps.AppInfo[i] && apps.AppInfo[i].Id === APP_ID) { idx = i; break; }
+    }
+    if (idx < 0) return false;
+    apps.AppInfo.splice(idx, 1);
+    var res = writeAppRegistry(apps);
+    return !!(res && res.ret);
+  }
+
   function doInstall() {
     if (!isVidaa) return;
     disableButtons(true);
@@ -566,6 +679,43 @@
       setStatus("Installing Stremio...", "working");
       showProgress(60);
       diagState.install.attempted = true;
+      renderDiagnostics();
+
+      /* Registry-first: on newer firmware Hisense_installApp reports success
+       * but the launcher entry never appears (the silent drop). Writing
+       * websdk/Appinfo.json directly is the only path that reliably lands. */
+      if (hasRegistryApi && installViaRegistry()) {
+        showProgress(100);
+        diagState.install.method = "registry";
+        diagState.install.callbackStatus = "registry-accepted";
+        refreshAppsOnHisenseUI(APP_ID);
+        setStatus(
+          "Installed via app registry \u2014 Stremio was written directly into the launcher's app list. " +
+          "Fully restart your TV now (not standby \u2014 unplug for 10 seconds if needed); Stremio appears at the end of the app list. " +
+          "If it still does not show, bookmark bariccattion.github.io/stremio-vidaa-tv in the TV Browser (Method 1) \u2014 everything works the same.",
+          "success"
+        );
+        renderDiagnostics();
+        disableButtons(false);
+        return;
+      }
+
+      if (!hasLegacyInstall) {
+        diagState.install.method = hasRegistryApi ? "registry-failed" : "unavailable";
+        renderDiagnostics();
+        setStatus(
+          "No install path worked on this firmware \u2014 Hisense_installApp is " +
+          (hasLegacyInstall ? "present" : "missing") + " and the app registry write " +
+          (hasRegistryApi ? "failed" : "is unavailable") + ". " +
+          "Use Method 1: open the TV Browser and go to bariccattion.github.io/stremio-vidaa-tv",
+          "error"
+        );
+        hideProgress();
+        disableButtons(false);
+        return;
+      }
+
+      diagState.install.method = "legacy";
       renderDiagnostics();
 
       try {
@@ -621,14 +771,29 @@
   /* ---------- uninstall ---------- */
   function doUninstall() {
     if (!isVidaa) return;
+    disableButtons(true);
+    setStatus("Uninstalling Stremio...", "working");
+
+    /* Registry-first, mirroring the install path */
+    if (hasRegistryApi) {
+      diagState.registryUninstall.attempted = true;
+      var removed = uninstallViaRegistry();
+      diagState.registryUninstall.result = removed ? "ok" : "failed-or-not-installed";
+      renderDiagnostics();
+      if (removed) {
+        refreshAppsOnHisenseUI(APP_ID);
+        setStatus("Stremio removed from the app registry. Fully restart your TV and the icon disappears from the launcher.", "success");
+        disableButtons(false);
+        return;
+      }
+      setStatus("Registry uninstall failed \u2014 trying Hisense_uninstallApp...", "warning");
+    }
 
     if (typeof Hisense_uninstallApp !== "function") {
       setStatus("Hisense_uninstallApp not available on this firmware", "error");
+      disableButtons(false);
       return;
     }
-
-    disableButtons(true);
-    setStatus("Uninstalling Stremio...", "working");
 
     try {
       Hisense_uninstallApp(APP_ID, function(result) {
