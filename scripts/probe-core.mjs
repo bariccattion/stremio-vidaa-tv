@@ -1,8 +1,17 @@
 // One-off probe: boot the built app and confirm the core-web WASM worker initializes.
 import { chromium } from '@playwright/test';
+import { spawn } from 'node:child_process';
+import { createRequire } from 'node:module';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const serve = (await import('node:child_process')).spawn('npx', ['serve', 'app', '-l', '8090', '--no-clipboard'], { shell: true, stdio: 'ignore' });
-await new Promise(r => setTimeout(r, 2500));
+const root = join(dirname(fileURLToPath(import.meta.url)), '..');
+const PORT = 8123;
+const serveJs = createRequire(import.meta.url).resolve('serve/build/main.js');
+// Spawn serve directly (no npx shell wrapper) so .kill() actually stops it on Windows.
+const serve = spawn(process.execPath, [serveJs, 'app', '-l', String(PORT), '--no-clipboard'], { cwd: root, stdio: 'ignore' });
+const shutdown = () => serve.kill();
+process.on('exit', shutdown);
 
 const browser = await chromium.launch();
 const page = await browser.newPage();
@@ -12,7 +21,15 @@ page.on('console', m => {
 });
 page.on('pageerror', e => errors.push(String(e)));
 
-await page.goto('http://localhost:8090/', { waitUntil: 'load' });
+// Wait for the server to accept connections (max ~10s).
+let up = false;
+for (let i = 0; i < 20 && !up; i++) {
+  await new Promise(r => setTimeout(r, 500));
+  up = await fetch(`http://localhost:${PORT}/`).then(() => true).catch(() => false);
+}
+if (!up) { console.error('probe: local server never came up'); await browser.close(); process.exit(1); }
+
+await page.goto(`http://localhost:${PORT}/`, { waitUntil: 'load', timeout: 30000 });
 // Wait up to 20s for the patch layer to observe a booted core (splash removal is driven by core readiness).
 let coreState = null;
 for (let i = 0; i < 40; i++) {
