@@ -77,8 +77,11 @@ jobs:
     needs: test
     # Every deploy rewrites the sw.js cache name with the new commit,
     # cache-busting every installed TV — so only real pushes to development
-    # ship (never PRs, never manual dispatches).
-    if: github.event_name == 'push' && github.ref == 'refs/heads/development'
+    # ship, plus manual dispatches from development (Actions -> CI (site)
+    # -> Run workflow) as a redeploy button. Always behind a green test run.
+    if: >-
+      github.ref == 'refs/heads/development' &&
+      (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

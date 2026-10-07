@@ -3,6 +3,10 @@ name: CI (tests)
 # Test-only workflow: runs when the test suite, the probe, the workflow
 # definitions, or Playwright config change — and never deploys. Deliberately
 # separate from CI (site) so it can't cancel or delay an in-flight deploy.
+#
+# Mixed pushes (site + test paths) trigger both workflows; the changes job
+# below makes this one stand down in that case, so CI (site) runs the suite
+# exactly once per push.
 on:
   pull_request:
     paths:
@@ -21,13 +25,40 @@ on:
 
 permissions:
   contents: read
+  pull-requests: read
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      site: ${{ steps.filter.outputs.site }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 20
+
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          base: development
+          filters: |
+            site:
+              - 'upstream/**'
+              - 'patches/**'
+              - 'installer/**'
+              - 'scripts/build.mjs'
+              - 'UPSTREAM.lock.json'
+              - 'package.json'
+              - 'package-lock.json'
+
   test:
+    needs: changes
+    # Manual dispatches always run, regardless of paths.
+    if: github.event_name == 'workflow_dispatch' || needs.changes.outputs.site != 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
