@@ -356,9 +356,7 @@ Key discoveries:
 
 ## Support
 
-If this project helped you get Stremio working on your TV, consider starring the repo or buying me a coffee.
-
-<a href="https://buymeacoffee.com/noobygains"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" width="200" /></a>
+If this project helped you get Stremio working on your TV, consider starring the repo.
 
 ## Disclaimer
 
