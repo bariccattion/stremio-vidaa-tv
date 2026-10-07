@@ -10,10 +10,10 @@ module.exports = defineConfig({
     headless: true,
   },
   webServer: {
-    command: 'npx serve . -l 8080 --no-clipboard',
+    command: 'node scripts/build.mjs && npx serve app -l 8080 --no-clipboard',
     port: 8080,
     reuseExistingServer: true,
-    timeout: 10000,
+    timeout: 60000,
   },
   projects: [
     {

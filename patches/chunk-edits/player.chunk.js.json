@@ -1,0 +1,11 @@
+{
+  "chunk": "player.chunk.js",
+  "description": "Surgical edits turning the pristine Theater 1.9.2 player.chunk.js into the VIDAA build. Derived from git baseline 8775223.",
+  "ops": [
+    {
+      "note": "Error display routed through window.__STREMIO_ERROR_ENHANCER__ (codec-specific TV error messages).",
+      "find": "                                                return ne.icon\n                                            },\n                                            name: \"warning\"\n                                        }), null), (0, r.Yr)(t, (() => e().message), null), (0, o.gb)((() => (0, r.s7)(t, ne.error))), t;\n                                        var t\n                                    }\n                                })",
+      "replace": "                                                return ne.icon\n                                            },\n                                            name: \"warning\"\n                                        }), null), (0, r.Yr)(t, (() => window.__STREMIO_ERROR_ENHANCER__ ? window.__STREMIO_ERROR_ENHANCER__(e()) : e().message), null), (0, o.gb)((() => (0, r.s7)(t, ne.error))), t;\n                                        var t\n                                    }\n                                })"
+    }
+  ]
+}

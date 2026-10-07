@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="theme-color" content="#000000" />
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+    <meta http-equiv="Pragma" content="no-cache" />
+    <meta http-equiv="Expires" content="0" />
+    <link rel="shortcut icon" type="image/ico" href="assets/favicon.ico" />
+    <!-- DNS prefetch / preconnect hints for common Stremio and debrid endpoints.
+         Resolves TLS handshake + DNS lookup ahead of stream start so the
+         browser's <video> element can start filling its buffer immediately
+         instead of burning 200-500ms on each new connection on stream change. -->
+    <link rel="dns-prefetch" href="//real-debrid.com" />
+    <link rel="dns-prefetch" href="//download.real-debrid.com" />
+    <link rel="dns-prefetch" href="//alldebrid.com" />
+    <link rel="dns-prefetch" href="//premiumize.me" />
+    <link rel="dns-prefetch" href="//torbox.app" />
+    <link rel="dns-prefetch" href="//strem.io" />
+    <link rel="dns-prefetch" href="//cinemeta-live.strem.io" />
+    <link rel="dns-prefetch" href="//v3-cinemeta.strem.io" />
+    <link rel="dns-prefetch" href="//torrentio.strem.fun" />
+    <link rel="dns-prefetch" href="//images.metahub.space" />
+    <link rel="preconnect" href="https://download.real-debrid.com" crossorigin />
+    <link rel="preconnect" href="https://real-debrid.com" crossorigin />
+    <style>
+        [focused], :focus { outline: 2px solid #7b5bf5 !important; outline-offset: 2px; }
+        button:focus { outline: 3px solid #a78bfa !important; outline-offset: 2px; }
+    </style>
+    <title>Stremio - Freedom to Stream</title>
+    <script>
+{{patches/head/001-server-url-config.js}}
+    </script>
+    <script>
+{{patches/head/002-esc-helper.js}}
+    </script>
+    <script>
+{{patches/head/003-vidaa-keyboard-fix.js}}
+    </script>
+    <script defer="defer" src="runtime.js?v={{VERSION}}"></script>
+    <script defer="defer" src="main.js?v={{VERSION}}"></script>
+    <script defer="defer" src="service.js?v={{VERSION}}"></script>
+    <script defer="defer" src="webOSTV.js?v={{VERSION}}"></script>
+</head>
+
+<body><noscript>You need to enable JavaScript to run this app.</noscript>
+    <div id="root"></div>
+    <div id="splash" style="position:fixed;top:0;left:0;width:100%;height:100%;background:#0a0a14;z-index:100001;display:flex;flex-direction:column;align-items:center;justify-content:center;">
+        <img src="logo.png" width="100" style="margin-bottom:1.5rem;opacity:0.9;">
+        <div style="color:rgba(255,255,255,0.5);font-size:1rem;font-family:PlusJakartaSans,sans-serif;">Loading...</div>
+        <div style="margin-top:1rem;width:120px;height:3px;background:rgba(255,255,255,0.1);border-radius:2px;overflow:hidden;">
+            <div id="splash-bar" style="width:0%;height:100%;background:#7b5bf5;border-radius:2px;transition:width 0.3s;"></div>
+        </div>
+    </div>
+    <div id="patch-version" style="position:fixed;bottom:4px;right:8px;color:rgba(255,255,255,0.3);font-size:10px;z-index:99999;pointer-events:none;">v{{VERSION}}</div>
+</body>
+<script>
+{{patches/head/004-build-commit-sw-register.js}}
+</script>
+<script>
+{{patches/head/005-server-url-sync-to-core.js}}
+</script>
+<script>
+{{patches/head/006-server-url-auto-reload.js}}
+</script>
+<script>
+{{patches/head/007-dv-hdr-smart-handling.js}}
+</script>
+<script>
+{{patches/head/008-error-messages-tv.js}}
+</script>
+<script>
+{{patches/head/009-splash-screen.js}}
+</script>
+<script>
+{{patches/head/010-resolution-indicator.js}}
+</script>
+<script>
+{{patches/head/011-remote-color-buttons.js}}
+</script>
+<script>
+{{patches/head/012-native-player-launcher.js}}
+</script>
+<script>
+{{patches/head/013-server-health-monitor.js}}
+</script>
+<script>
+{{patches/head/014-watchdog.js}}
+</script>
+<script>
+{{patches/head/015-memory-pressure-monitor.js}}
+</script>
+<script>
+{{patches/head/016-vidaa-api-integration.js}}
+</script>
+<script>
+{{patches/head/017-install-to-launcher-prompt.js}}
+</script>
+<script>
+{{patches/head/018-vidaa-diagnostics-blob.js}}
+</script>
+<script>
+{{patches/head/019-lazy-poster-loading.js}}
+</script>
+<script>
+{{patches/head/020-channel-seek.js}}
+</script>
+<script>
+{{patches/head/021-720p-zoom-correction.js}}
+</script>
+<script>
+{{patches/head/022-fkey-crash-suppress.js}}
+</script>
+<script>
+{{patches/head/023-exit-button.js}}
+</script>
+<script>
+{{patches/head/024-playback-speed-volume-persist.js}}
+</script>
+<script>
+{{patches/head/025-subtitle-size-fix.js}}
+</script>
+<script>
+{{patches/head/026-subtitle-language-memory.js}}
+</script>
+<script>
+{{patches/head/027-subtitle-off-option.js}}
+</script>
+<script>
+{{patches/head/028-native-handoff-title-watched.js}}
+</script>
+<script>
+{{patches/head/029-subtitle-full-filenames.js}}
+</script>
+<script>
+{{patches/head/030-prefetch-next-episode.js}}
+</script>
+<script>
+{{patches/head/031-webtorrent-streaming.js}}
+</script>
+<script>
+{{patches/head/032-vidaa-settings-community-features.js}}
+</script>
+
+<!-- #22: Low Memory Mode -->
+<script>
+{{patches/head/033-low-memory-mode.js}}
+</script>
+
+<!-- #22: Auto-Rebuffer on Stall -->
+<script>
+{{patches/head/034-auto-rebuffer.js}}
+</script>
+
+<!-- #22: Stream Stats Overlay -->
+<script>
+{{patches/head/035-stream-stats-overlay.js}}
+</script>
+
+<!-- #22/#28 — Playback performance: buffering mitigations -->
+<script>
+{{patches/head/036-video-element-prep.js}}
+</script>
+<script>
+{{patches/head/037-quiet-player-mode.js}}
+</script>
+<script>
+{{patches/head/038-auto-native-player.js}}
+</script>
+<script>
+{{patches/head/039-pollers-honor-quiet-mode.js}}
+</script>
+<script>
+{{patches/head/040-honest-stall-messaging.js}}
+</script>
+<script>
+{{patches/head/041-vidaa-diagnostic-panel.js}}
+</script>
+<script>
+{{patches/head/042-heavy-stream-help.js}}
+</script>
+
+</html>

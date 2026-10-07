@@ -399,9 +399,8 @@
                                             videoCodecs: c,
                                             audioCodecs: d,
                                             maxAudioChannels: h
-                                        }),
-                                        p = !!(n.forceTranscoding || window.__FORCE_TRANSCODE__);
-                                    return (p ? (window.__FORCE_TRANSCODE__ = !1, Promise.resolve(!1)) : t.canPlayStream({
+                                        });
+                                    return (n.forceTranscoding ? Promise.resolve(!1) : t.canPlayStream({
                                         url: r
                                     }, f)).catch((function(e) {
                                         return console.warn("Media probe error", e), !1
@@ -418,7 +417,7 @@
                                             l = new URLSearchParams([
                                                 ["mediaURL", r]
                                             ]);
-                                        return p && l.set("forceTranscoding", "1"), c.forEach((function(e) {
+                                        return n.forceTranscoding && l.set("forceTranscoding", "1"), c.forEach((function(e) {
                                             l.append("videoCodecs", e)
                                         })), d.forEach((function(e) {
                                             l.append("audioCodecs", e)

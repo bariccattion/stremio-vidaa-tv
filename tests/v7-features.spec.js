@@ -7,10 +7,10 @@ test.describe('Index HTML structure', () => {
     await expect(page).toHaveTitle('Stremio - Freedom to Stream');
   });
 
-  test('version indicator shows v7', async ({ page }) => {
+  test('version indicator shows v8', async ({ page }) => {
     await page.goto('/');
     const version = page.locator('#patch-version');
-    await expect(version).toHaveText('v7');
+    await expect(version).toHaveText('v8');
   });
 
   test('root div exists', async ({ page }) => {
@@ -18,13 +18,13 @@ test.describe('Index HTML structure', () => {
     await expect(page.locator('#root')).toBeAttached();
   });
 
-  test('scripts load with cache-bust v7 param', async ({ page }) => {
+  test('scripts load with cache-bust v8 param', async ({ page }) => {
     await page.goto('/');
     const scripts = await page.locator('script[src]').all();
     const srcs = await Promise.all(scripts.map(s => s.getAttribute('src')));
     const mainScripts = srcs.filter(s => s && (s.includes('runtime') || s.includes('main.js') || s.includes('service') || s.includes('webOSTV')));
     for (const src of mainScripts) {
-      expect(src).toContain('?v=7');
+      expect(src).toContain('?v=8');
     }
   });
 });

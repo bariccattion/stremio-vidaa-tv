@@ -1,28 +1,5 @@
-var CACHE_NAME = 'stremio-vidaa-v10';
-var ASSETS = [
-  './',
-  './index.html',
-  './runtime.js',
-  './main.js',
-  './service.js',
-  './webOSTV.js',
-  './v5-worker.js',
-  './stremio_core_web_bg.wasm',
-  './core.chunk.js',
-  './home.chunk.js',
-  './discover.chunk.js',
-  './search.chunk.js',
-  './player.chunk.js',
-  './video.chunk.js',
-  './details.chunk.js',
-  './library.chunk.js',
-  './login.chunk.js',
-  './settings.chunk.js',
-  './addons.chunk.js',
-  './logo.png',
-  './icon.png',
-  './PlusJakartaSans.ttf'
-];
+var CACHE_NAME = '{{CACHE_NAME}}';
+var ASSETS = {{ASSETS}};
 
 self.addEventListener('install', function(e) {
   e.waitUntil(

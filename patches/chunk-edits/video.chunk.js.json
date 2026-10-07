@@ -1,0 +1,17 @@
+{
+  "chunk": "video.chunk.js",
+  "description": "Surgical edits turning the pristine Theater 1.9.2 video.chunk.js into the VIDAA build. Derived from git baseline 8775223.",
+  "ops": [
+    {
+      "note": "forceTranscoding now also honors the window.__FORCE_TRANSCODE__ flag set by the Blue remote key / patch layer.",
+      "find": "                                            videoCodecs: c,\n                                            audioCodecs: d,\n                                            maxAudioChannels: h\n                                        });\n                                    return (n.forceTranscoding ? Promise.resolve(!1) : t.canPlayStream({\n                                        url: r\n                                    }, f)).catch((function(e) {\n                                        return console.warn(\"Media probe error\", e), !1",
+      "replace": "                                            videoCodecs: c,\n                                            audioCodecs: d,\n                                            maxAudioChannels: h\n                                        }),\n                                        p = !!(n.forceTranscoding || window.__FORCE_TRANSCODE__);\n                                    return (p ? (window.__FORCE_TRANSCODE__ = !1, Promise.resolve(!1)) : t.canPlayStream({\n                                        url: r\n                                    }, f)).catch((function(e) {\n                                        return console.warn(\"Media probe error\", e), !1"
+    },
+    {
+      "note": "Propagates the forced-transcode decision into the server URL params.",
+      "find": "                                            l = new URLSearchParams([\n                                                [\"mediaURL\", r]\n                                            ]);\n                                        return n.forceTranscoding && l.set(\"forceTranscoding\", \"1\"), c.forEach((function(e) {\n                                            l.append(\"videoCodecs\", e)\n                                        })), d.forEach((function(e) {\n                                            l.append(\"audioCodecs\", e)",
+      "replace": "                                            l = new URLSearchParams([\n                                                [\"mediaURL\", r]\n                                            ]);\n                                        return p && l.set(\"forceTranscoding\", \"1\"), c.forEach((function(e) {\n                                            l.append(\"videoCodecs\", e)\n                                        })), d.forEach((function(e) {\n                                            l.append(\"audioCodecs\", e)"
+    }
+  ],
+  "fixTrailingNewline": "ensure"
+}
