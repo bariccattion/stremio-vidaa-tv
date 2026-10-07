@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="logo.png" alt="Stremio" width="120" />
+  <img src="app/logo.png" alt="Stremio" width="120" />
 </p>
 
 <h1 align="center">Stremio for Hisense Projectors &amp; VIDAA TVs</h1>

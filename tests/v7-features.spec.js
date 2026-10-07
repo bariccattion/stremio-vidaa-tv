@@ -570,10 +570,18 @@ test.describe('Installer flows', () => {
 
     const args = await page.evaluate(() => window.__installerArgs);
     expect(args).toBeTruthy();
-    expect(args.icon1).toBe('http://localhost:8080/shared/icon.png');
-    expect(args.icon2).toBe('http://localhost:8080/shared/icon.png');
-    expect(args.icon3).toBe('http://localhost:8080/shared/icon.png');
+    expect(args.icon1).toBe('http://localhost:8080/icon.png');
+    expect(args.icon2).toBe('http://localhost:8080/icon.png');
+    expect(args.icon3).toBe('http://localhost:8080/icon.png');
     expect(args.appUrl).toContain('https://bariccattion.github.io/stremio-vidaa-tv/');
+
+    // The URL must not just be well-formed — the TV downloads the icon from
+    // it during install, so it has to resolve on the serving origin.
+    for (const icon of [args.icon1, args.icon2, args.icon3]) {
+      const response = await page.request.get(icon);
+      expect(response.status()).toBe(200);
+      expect(response.headers()['content-type']).toContain('image/');
+    }
   });
 
   test('installer diagnostics include domain registration and install results', async ({ page }) => {

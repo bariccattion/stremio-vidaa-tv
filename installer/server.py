@@ -325,12 +325,15 @@ def dns_server(local_ip):
 # ---------------------------------------------------------------------------
 
 class InstallerHandler(http.server.SimpleHTTPRequestHandler):
-    """Serve the installer UI plus a small set of shared assets from the repo root."""
+    """Serve the installer UI plus the brand assets it references from app/."""
 
+    # The installer page references these at the site root; the files live in
+    # app/ (also the gh-pages root, so the same URLs work when the installer
+    # page is served from the deployed site instead of this server).
     SHARED_FILES = {
-        "icon.png": os.path.join(REPO_ROOT, "icon.png"),
-        "logo.png": os.path.join(REPO_ROOT, "logo.png"),
-        "PlusJakartaSans.ttf": os.path.join(REPO_ROOT, "PlusJakartaSans.ttf"),
+        "/icon.png": os.path.join(REPO_ROOT, "app", "icon.png"),
+        "/logo.png": os.path.join(REPO_ROOT, "app", "logo.png"),
+        "/PlusJakartaSans.ttf": os.path.join(REPO_ROOT, "app", "PlusJakartaSans.ttf"),
     }
 
     def __init__(self, *args, **kwargs):
@@ -346,10 +349,9 @@ class InstallerHandler(http.server.SimpleHTTPRequestHandler):
         if path in ("/", "/index.html"):
             return super().do_GET()
 
-        if path.startswith("/shared/"):
-            filename = path.split("/", 2)[-1]
-            file_path = self.SHARED_FILES.get(filename)
-            if not file_path or not os.path.exists(file_path):
+        if path in self.SHARED_FILES:
+            file_path = self.SHARED_FILES[path]
+            if not os.path.exists(file_path):
                 self.send_error(404, "File not found")
                 return
 
