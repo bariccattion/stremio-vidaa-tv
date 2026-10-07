@@ -1,6 +1,6 @@
 /*
  * Stremio Theater - Core chunk replacement
- * Loads v5 stremio-core-web (0.53.0) WASM backend via external Worker
+ * Loads v5 stremio-core-web (0.64.1) WASM backend via external Worker
  * Replaces the original inline worker with v5's worker.js + WASM binary
  */
 (self.webpackChunkstremio_theater = self.webpackChunkstremio_theater || []).push([

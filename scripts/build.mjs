@@ -63,6 +63,7 @@ if (upstreamFiles.length === 0) die('upstream/ is empty');
 
 let lockDirty = false;
 for (const comp of Object.values(lock.components || {})) {
+  if (updateLock) break; // update mode records the new state instead of verifying the old one
   for (const [rel, expected] of Object.entries(comp.files || {})) {
     const abs = join(root, 'upstream', rel);
     if (!existsSync(abs)) die(`lock mismatch: upstream/${rel} is missing (locked ${expected})`);
@@ -151,7 +152,7 @@ writeFileSync(join(APP, 'index.html'), html);
 
 // ---------- 5. sw.js ----------
 let sw = toLf(readFileSync(join(root, 'patches', 'sw.template.js'), 'utf8'));
-const assets = ['./', ...readdirSync(APP).filter(n => n !== 'sw.js').sort().map(n => `./${n}`)];
+const assets = ['./', ...collectFiles(APP, APP).map(f => `./${f.rel}`).sort()];
 sw = sw.replace('{{CACHE_NAME}}', `stremio-vidaa-v${VERSION}-${COMMIT}`)
        .replace('{{ASSETS}}', JSON.stringify(assets, null, 2));
 if (/\{\{(CACHE_NAME|ASSETS)\}\}/.test(sw)) die('unresolved placeholder in sw.template.js');
@@ -165,12 +166,15 @@ if (lockDirty) {
 // ---------- 6. Optional gate: compare against a git ref ----------
 if (compareRef) {
   const shipBuf = (rel) => {
-    try { return execFileSync('git', ['cat-file', 'blob', `${compareRef}:${rel}`], { cwd: root, maxBuffer: 64 * 1024 * 1024 }); }
-    catch { return null; }
+    try {
+      return execFileSync('git', ['cat-file', 'blob', `${compareRef}:${rel}`], { cwd: root, maxBuffer: 64 * 1024 * 1024, stdio: ['ignore', 'pipe', 'ignore'] });
+    } catch { return null; }
   };
   const diffs = [];
-  for (const name of readdirSync(APP).sort()) {
-    const built = readFileSync(join(APP, name));
+  const appFiles = collectFiles(APP, APP);
+  for (const f of appFiles) {
+    const name = f.rel;
+    const built = readFileSync(f.abs);
     const refBlob = shipBuf(name);
     if (refBlob === null) { diffs.push(`+ ${name} (not in ${compareRef})`); continue; }
     if (!built.equals(refBlob)) {
