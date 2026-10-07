@@ -8,13 +8,53 @@ on:
 
 permissions:
   contents: write
+  pull-requests: read
 
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
+  changes:
+    # Classify the changed paths once; test and deploy key off this.
+    # - "site"  = anything that alters the built app/ (and thus gh-pages).
+    # - "verify" = test/tooling-only changes: worth testing, nothing to deploy.
+    # Docs, .gitignore, Dockerfile, sync tooling etc. trigger nothing.
+    runs-on: ubuntu-latest
+    outputs:
+      site: ${{ steps.filter.outputs.site }}
+      verify: ${{ steps.filter.outputs.verify }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 20
+
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          base: development
+          filters: |
+            site:
+              - 'upstream/**'
+              - 'patches/**'
+              - 'installer/**'
+              - 'scripts/build.mjs'
+              - 'UPSTREAM.lock.json'
+              - 'package.json'
+              - 'package-lock.json'
+            verify:
+              - 'tests/**'
+              - 'playwright.config.js'
+              - 'scripts/probe-core.mjs'
+              - '.github/workflows/ci.yml'
+
   test:
+    needs: changes
+    # Manual dispatches always run the full suite, regardless of paths.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      needs.changes.outputs.site == 'true' ||
+      needs.changes.outputs.verify == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -55,7 +95,13 @@ jobs:
 
   deploy:
     needs: test
-    if: github.event_name == 'push' && github.ref == 'refs/heads/development'
+    # Only redeploy when site content actually changed: every deploy rewrites
+    # the sw.js cache name with the new commit, cache-busting every installed
+    # TV — so test/doc-only pushes must not ship a new build.
+    if: >-
+      github.event_name == 'push' &&
+      github.ref == 'refs/heads/development' &&
+      needs.changes.outputs.site == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
