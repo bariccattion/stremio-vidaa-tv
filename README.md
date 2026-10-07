@@ -107,13 +107,15 @@ docker run -d --name stremio-server -p 11470:11470 stremio/server
 
 Or install [Stremio desktop](https://www.stremio.com/downloads) on a PC, which includes the server automatically.
 
-**Connect it to the app** by adding `?server=` to the URL once:
+**Connect it to the app** via **Settings > STREMIO TV > Streaming Server** in the app: type the address (e.g. `http://192.168.1.50:11470`) and press **Save & Test** — the app pings the server with a timeout and saves the address for every future session. Not sure of the address? Press **Auto-Detect** to sweep the local network for a running Stremio server (runs only when you press it).
+
+Shortcut: you can also add `?server=` to the URL once, and it is saved automatically:
 
 ```
 https://bariccattion.github.io/stremio-vidaa-tv/?server=http://192.168.1.50:11470
 ```
 
-Replace `192.168.1.50` with your server's IP. The setting is saved automatically. You can also change it inside the app at **Settings > Server > Edit URL**.
+Replace `192.168.1.50` with your server's IP. You can also change the address inside the app at **Settings > Server > Edit URL**.
 
 ## Tested Codec Support (Hisense PX1HE / 100L5H)
 
@@ -142,7 +144,7 @@ DRM: Widevine, PlayReady, and ClearKey are all supported.
 |---|---|
 | **Full addon support** | All community addons work, including Torrentio with Real-Debrid |
 | **Dolby Vision playback** | DV+HDR streams in MKV play natively at 4K. Smart stall detection warns only on actual failure |
-| **Server URL sync** | `?server=` properly syncs to the WASM core. Auto-reloads when changed in Settings |
+| **Server URL manager** | Configure the streaming server from **Settings > STREMIO TV > Streaming Server**: Save & Test pings it with a timeout, Auto-Detect sweeps the LAN (manual only), reset supported. `?server=` still works as a shortcut; changes sync to the WASM core |
 | **VIDAA keyboard fix** | 3-layer fix for the VIDAA on-screen keyboard not triggering search |
 | **Resolution indicator** | Shows current playback quality (4K/1080p/720p) in the player |
 | **Splash screen** | Loading screen with progress bar while WASM initialises |
