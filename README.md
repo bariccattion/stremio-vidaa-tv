@@ -13,7 +13,7 @@
   <img src="https://img.shields.io/badge/build-v8-orange" alt="Build version" />
   <img src="https://img.shields.io/badge/core-stremio--core--web%200.64.1-purple" alt="Core version" />
   <img src="https://img.shields.io/badge/platform-VIDAA%20OS-green" alt="Platform" />
-  <a href="https://github.com/NoobyGains/stremio-vidaa-tv/stargazers"><img src="https://img.shields.io/github/stars/NoobyGains/stremio-vidaa-tv?style=social" alt="GitHub Stars" /></a>
+  <a href="https://github.com/bariccattion/stremio-vidaa-tv/stargazers"><img src="https://img.shields.io/github/stars/bariccattion/stremio-vidaa-tv?style=social" alt="GitHub Stars" /></a>
 </p>
 
 ---
@@ -99,7 +99,7 @@ Adds a permanent launcher icon. Requires a PC on the same network. The installer
 
 1. Download and run the installer:
    ```bash
-   git clone https://github.com/NoobyGains/stremio-vidaa-tv.git
+   git clone https://github.com/bariccattion/stremio-vidaa-tv.git
    cd stremio-vidaa-tv/installer
    python server.py
    ```
@@ -114,7 +114,7 @@ The installer only spoofs `vidaahub.com`, forwards normal DNS requests upstream,
 ### Method 4: Self-hosted
 
 ```bash
-git clone https://github.com/NoobyGains/stremio-vidaa-tv.git
+git clone https://github.com/bariccattion/stremio-vidaa-tv.git
 cd stremio-vidaa-tv
 docker build -t stremio-vidaa .
 docker run -d -p 8000:8000 stremio-vidaa
@@ -198,38 +198,38 @@ This build includes fixes and features that go above and beyond what standard st
 
 | Fix | Description |
 |---|---|
-| **Suppress F key crash** ([#10](https://github.com/NoobyGains/stremio-vidaa-tv/issues/10)) | Prevents the VIDAA browser from crashing when the F key (fullscreen) is pressed. Fullscreen is meaningless on a TV — the browser is always fullscreen. |
-| **Exit button for TV** ([#6](https://github.com/NoobyGains/stremio-vidaa-tv/issues/6)) | Adds an "Exit Stremio" button to Settings. Wired to `Hisense_Exit()` on VIDAA devices for a clean app exit. |
+| **Suppress F key crash** ([#10](https://github.com/bariccattion/stremio-vidaa-tv/issues/10)) | Prevents the VIDAA browser from crashing when the F key (fullscreen) is pressed. Fullscreen is meaningless on a TV — the browser is always fullscreen. |
+| **Exit button for TV** ([#6](https://github.com/bariccattion/stremio-vidaa-tv/issues/6)) | Adds an "Exit Stremio" button to Settings. Wired to `Hisense_Exit()` on VIDAA devices for a clean app exit. |
 
 ### Playback Persistence
 
 | Fix | Description |
 |---|---|
-| **Save playback speed & volume** ([#9](https://github.com/NoobyGains/stremio-vidaa-tv/issues/9)) | Remembers your preferred playback speed and volume across sessions via localStorage. Automatically restored on each video. |
-| **Fix subtitle size on start** ([#8](https://github.com/NoobyGains/stremio-vidaa-tv/issues/8)) | Persists subtitle size preference and force-applies it when the player initialises, preventing the core from resetting it. |
-| **Remember subtitle language** ([#7](https://github.com/NoobyGains/stremio-vidaa-tv/issues/7)) | Stores your selected subtitle language and auto-selects a matching track when a new video starts. Supports partial language matching (e.g. "en" matches "eng"). |
+| **Save playback speed & volume** ([#9](https://github.com/bariccattion/stremio-vidaa-tv/issues/9)) | Remembers your preferred playback speed and volume across sessions via localStorage. Automatically restored on each video. |
+| **Fix subtitle size on start** ([#8](https://github.com/bariccattion/stremio-vidaa-tv/issues/8)) | Persists subtitle size preference and force-applies it when the player initialises, preventing the core from resetting it. |
+| **Remember subtitle language** ([#7](https://github.com/bariccattion/stremio-vidaa-tv/issues/7)) | Stores your selected subtitle language and auto-selects a matching track when a new video starts. Supports partial language matching (e.g. "en" matches "eng"). |
 
 ### Subtitle Enhancements
 
 | Fix | Description |
 |---|---|
-| **Subtitle off/unload option** ([#11](https://github.com/NoobyGains/stremio-vidaa-tv/issues/11)) | Injects a "None/Off" option into the subtitle picker so you can disable subtitles entirely. Standard Stremio has no way to turn subtitles off once enabled. |
-| **Full subtitle filenames** ([#14](https://github.com/NoobyGains/stremio-vidaa-tv/issues/14)) | Intercepts addon subtitle responses and caches full filenames. Patches the subtitle picker DOM to show descriptive names instead of truncated labels. |
+| **Subtitle off/unload option** ([#11](https://github.com/bariccattion/stremio-vidaa-tv/issues/11)) | Injects a "None/Off" option into the subtitle picker so you can disable subtitles entirely. Standard Stremio has no way to turn subtitles off once enabled. |
+| **Full subtitle filenames** ([#14](https://github.com/bariccattion/stremio-vidaa-tv/issues/14)) | Intercepts addon subtitle responses and caches full filenames. Patches the subtitle picker DOM to show descriptive names instead of truncated labels. |
 
 ### Native Player Integration
 
 | Fix | Description |
 |---|---|
-| **Full title to native player** ([#12](https://github.com/NoobyGains/stremio-vidaa-tv/issues/12)) | Scrapes the title from the player DOM and detail pages, then passes it in the native VIDAA player handoff payload so the system player shows the correct title. |
-| **Mark as watched after native handoff** ([#13](https://github.com/NoobyGains/stremio-vidaa-tv/issues/13)) | After launching the native player, estimates progress and dispatches a mark-as-watched action to stremio-core so your library stays in sync. |
+| **Full title to native player** ([#12](https://github.com/bariccattion/stremio-vidaa-tv/issues/12)) | Scrapes the title from the player DOM and detail pages, then passes it in the native VIDAA player handoff payload so the system player shows the correct title. |
+| **Mark as watched after native handoff** ([#13](https://github.com/bariccattion/stremio-vidaa-tv/issues/13)) | After launching the native player, estimates progress and dispatches a mark-as-watched action to stremio-core so your library stays in sync. |
 
 ### Performance
 
 | Fix | Description |
 |---|---|
-| **Prefetch next episode** ([#15](https://github.com/NoobyGains/stremio-vidaa-tv/issues/15)) | When watching a series, automatically fires a background fetch for the next episode's stream URL to warm the streaming server cache and reduce load time. |
+| **Prefetch next episode** ([#15](https://github.com/bariccattion/stremio-vidaa-tv/issues/15)) | When watching a series, automatically fires a background fetch for the next episode's stream URL to warm the streaming server cache and reduce load time. |
 
-### Direct Torrent Streaming (Experimental) ([#16](https://github.com/NoobyGains/stremio-vidaa-tv/issues/16))
+### Direct Torrent Streaming (Experimental) ([#16](https://github.com/bariccattion/stremio-vidaa-tv/issues/16))
 
 Streams magnet links from torrent addons directly in the browser via [WebTorrent](https://webtorrent.io) — no streaming server, no debrid. **Off by default**; enable it in Settings ▸ Torrent Streaming.
 

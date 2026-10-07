@@ -13,7 +13,7 @@ One-click installer for Stremio on Hisense VIDAA TVs. It spoofs only `vidaahub.c
 
 ```bash
 # Clone the repo (or just download the installer folder)
-git clone https://github.com/NoobyGains/stremio-vidaa-tv.git
+git clone https://github.com/bariccattion/stremio-vidaa-tv.git
 cd stremio-vidaa-tv/installer
 
 # Run the server (as admin / root)

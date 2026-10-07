@@ -90,7 +90,7 @@ works, and pin that in `UPSTREAM.lock.json`. Git history holds every predecessor
 
 ## Provenance
 
-- **Theater 1.9.2 chunks**: inherited from [NoobyGains/stremio-vidaa-tv](https://github.com/NoobyGains/stremio-vidaa-tv)
+- **Theater 1.9.2 chunks**: inherited from [bariccattion/stremio-vidaa-tv](https://github.com/bariccattion/stremio-vidaa-tv)
   v6 baseline (commit `8775223`), which itself repackaged Stremio's unpublished
   TV web build. Pristine copies live in `upstream/theater-1.9.2/`; the three
   modified chunks (player, video, settings) are stored pristine there too, with

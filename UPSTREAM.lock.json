@@ -3,7 +3,7 @@
   "components": {
     "theater": {
       "version": "1.9.2",
-      "origin": "Stremio 'Theater' TV web build (unpublished TV frontend, lineage: stremio-web pre-v5 UI). Baseline: NoobyGains/stremio-vidaa-tv v6 commit 8775223. player/video/settings chunks are stored PRISTINE here; patches/chunk-edits/*.json hold the VIDAA edits.",
+      "origin": "Stremio 'Theater' TV web build (unpublished TV frontend, lineage: stremio-web pre-v5 UI). Baseline: bariccattion/stremio-vidaa-tv v6 commit 8775223. player/video/settings chunks are stored PRISTINE here; patches/chunk-edits/*.json hold the VIDAA edits.",
       "dir": "upstream/theater-1.9.2",
       "files": {
         "theater-1.9.2/0cf35cc8444a3ffca8d9.png": "sha256:6f3498489de81b0e5ee3cb486ca1c6ea5b31c4946a49243f6c5b161e988a4f38",
