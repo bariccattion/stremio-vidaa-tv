@@ -1,5 +1,7 @@
 // VIDAA Diagnostics — copyable debug blob for install/runtime reports
 (function() {
+    var RT = window.__vidaaRuntime;
+
     function safeRead(fn, fallback) {
         try { return fn(); } catch (e) { return fallback; }
     }
@@ -70,11 +72,6 @@
             vidaaCaps: window.__VIDAA_CAPS__ || null,
             vidaaState: window.__VIDAA_STATE__ || null
         };
-    }
-
-    function closeDiagnosticsModal() {
-        var existing = document.getElementById('vidaa-diagnostics-modal');
-        if (existing) existing.remove();
     }
 
     function closeModalById(id) {
@@ -195,13 +192,7 @@
     }
 
     window.__showVidaaToast = function(message, duration) {
-        var toast = document.createElement('div');
-        toast.style.cssText = 'position:fixed;left:50%;bottom:42px;transform:translateX(-50%);background:rgba(0,0,0,0.88);color:#fff;padding:12px 18px;border-radius:10px;font-size:1rem;font-family:PlusJakartaSans,sans-serif;z-index:100003;max-width:min(88vw, 720px);text-align:center;box-shadow:0 12px 30px rgba(0,0,0,0.4);';
-        toast.textContent = message;
-        document.body.appendChild(toast);
-        setTimeout(function() {
-            if (toast.parentNode) toast.remove();
-        }, duration || 2200);
+        RT.toast(message, { at: 'bottom', ms: duration || 2200 });
     };
 
     function playbackTrackedSettings() {
@@ -307,86 +298,82 @@
         });
     }
 
-    function closePlaybackDiagnosticsModal() {
-        var existing = document.getElementById('vidaa-playback-diagnostics-modal');
-        if (existing) existing.remove();
-    }
+    // ── Diagnostics sections (rendered inside the unified panel, 044). ──
+    // Content collectors stay here; the chrome (tabs, close, Back/Escape)
+    // belongs to the diagnostics module. Legacy entry-point globals are
+    // kept for the Settings rows and tests.
+    RT.when(function() { return !!window.__vidaaRegisterDiagnostic; }, function() {
+        window.__vidaaRegisterDiagnostic({
+            id: 'debug-blob',
+            label: 'Debug Blob',
+            render: function(body) {
+                var textarea = document.createElement('textarea');
+                textarea.readOnly = true;
+                textarea.style.cssText = 'width:100%;min-height:360px;max-height:56vh;resize:vertical;border-radius:12px;border:1px solid rgba(255,255,255,0.1);background:rgba(0,0,0,0.26);color:#dfe2ff;padding:16px;font-family:Consolas,\"Courier New\",monospace;font-size:13px;line-height:1.45;';
+                textarea.value = JSON.stringify(collectDiagnostics(), null, 2);
 
-    function closeSafeModeModal() {
-        var existing = document.getElementById('vidaa-safe-mode-modal');
-        if (existing) existing.remove();
-    }
+                var copyBtn = createVidaaActionButton('Copy Debug Blob', { id: 'vidaa-diag-copy-btn', primary: true });
+                copyBtn.style.marginTop = '10px';
+                copyBtn.onclick = function() { copyBlob(textarea); };
+
+                body.appendChild(textarea);
+                body.appendChild(copyBtn);
+                textarea.focus();
+                textarea.select();
+            }
+        });
+        window.__vidaaRegisterDiagnostic({
+            id: 'playback',
+            label: 'Playback',
+            render: function(body) {
+                var textarea = document.createElement('textarea');
+                textarea.readOnly = true;
+                textarea.style.cssText = 'width:100%;min-height:360px;max-height:56vh;resize:vertical;border-radius:12px;border:1px solid rgba(255,255,255,0.1);background:rgba(0,0,0,0.26);color:#dfe2ff;padding:16px;font-family:Consolas,\"Courier New\",monospace;font-size:13px;line-height:1.45;';
+                textarea.value = '{"status":"collecting"}';
+
+                var copyBtn = createVidaaActionButton('Copy Playback Blob', { id: 'vidaa-playback-diag-copy-btn', primary: true });
+                copyBtn.style.marginTop = '10px';
+                copyBtn.onclick = function() { copyBlob(textarea); };
+
+                body.appendChild(textarea);
+                body.appendChild(copyBtn);
+
+                collectPlaybackDiagnostics().then(function(diag) {
+                    if (!textarea.isConnected) return;
+                    textarea.value = JSON.stringify(diag, null, 2);
+                }).catch(function(err) {
+                    if (!textarea.isConnected) return;
+                    textarea.value = JSON.stringify({
+                        error: err && err.message ? err.message : 'failed to collect playback diagnostics'
+                    }, null, 2);
+                });
+
+                textarea.focus();
+                textarea.select();
+            }
+        });
+    });
 
     window.__showVidaaDiagnostics = function() {
-        closeDiagnosticsModal();
-        var copyBtn = createVidaaActionButton('Copy Debug Blob', { id: 'vidaa-diag-copy-btn', primary: true });
-        var modalApi = createVidaaModal({
-            id: 'vidaa-diagnostics-modal',
-            title: 'VIDAA Diagnostics',
-            width: '920px',
-            maxHeight: '88vh',
-            helpText: 'Paste this into a GitHub issue if install, zoom, or playback behavior looks wrong on your VIDAA device.',
-            headerButtons: [copyBtn]
-        });
-
-        var textarea = document.createElement('textarea');
-        textarea.readOnly = true;
-        textarea.style.cssText = 'width:100%;min-height:360px;max-height:60vh;resize:vertical;border-radius:12px;border:1px solid rgba(255,255,255,0.1);background:rgba(0,0,0,0.26);color:#dfe2ff;padding:16px;font-family:Consolas,\"Courier New\",monospace;font-size:13px;line-height:1.45;';
-        textarea.value = JSON.stringify(collectDiagnostics(), null, 2);
-
-        copyBtn.onclick = function() { copyBlob(textarea); };
-        modalApi.body.appendChild(textarea);
-        textarea.focus();
-        textarea.select();
+        if (window.__vidaaDiagnostics) window.__vidaaDiagnostics.show('debug-blob');
     };
 
     window.__showPlaybackDiagnostics = function() {
-        closePlaybackDiagnosticsModal();
-        var copyBtn = createVidaaActionButton('Copy Playback Blob', { id: 'vidaa-playback-diag-copy-btn', primary: true });
-        var modalApi = createVidaaModal({
-            id: 'vidaa-playback-diagnostics-modal',
-            title: 'Playback Diagnostics',
-            width: '920px',
-            maxHeight: '88vh',
-            helpText: 'Use this when playback, buffering, subtitles, or aspect ratio are wrong. It captures the current video element, stream metadata, and saved playback settings.',
-            headerButtons: [copyBtn]
-        });
-
-        var textarea = document.createElement('textarea');
-        textarea.readOnly = true;
-        textarea.style.cssText = 'width:100%;min-height:360px;max-height:60vh;resize:vertical;border-radius:12px;border:1px solid rgba(255,255,255,0.1);background:rgba(0,0,0,0.26);color:#dfe2ff;padding:16px;font-family:Consolas,\"Courier New\",monospace;font-size:13px;line-height:1.45;';
-        textarea.value = '{"status":"collecting"}';
-
-        copyBtn.onclick = function() { copyBlob(textarea); };
-        modalApi.body.appendChild(textarea);
-
-        collectPlaybackDiagnostics().then(function(diag) {
-            textarea.value = JSON.stringify(diag, null, 2);
-        }).catch(function(err) {
-            textarea.value = JSON.stringify({
-                error: err && err.message ? err.message : 'failed to collect playback diagnostics'
-            }, null, 2);
-        });
-
-        textarea.focus();
-        textarea.select();
+        if (window.__vidaaDiagnostics) window.__vidaaDiagnostics.show('playback');
     };
 
     window.__applyPlaybackSafeMode = function(opts) {
-        try {
-            localStorage.setItem('stremio_720p_mode', 'auto');
-            localStorage.setItem('stremio_force_stereo', 'false');
-            localStorage.setItem('stremio_audio_delay_enabled', 'false');
-            localStorage.setItem('stremio_sub_drift_fix', 'false');
-            localStorage.setItem('stremio_webtorrent_enabled', 'false');
-            localStorage.setItem('stremio_stream_stats', 'false');
-            localStorage.setItem('stremio_low_memory', 'true');
-            localStorage.setItem('stremio_auto_rebuffer', 'true');
-            localStorage.setItem('stremio_playback_warning', 'true');
-            localStorage.setItem('stremio_quiet_player', 'false');
-            localStorage.setItem('stremio_auto_native_player_mkv', 'false');
-            localStorage.setItem('stremio_auto_native_player', 'false');
-        } catch (e) {}
+        // Conservative profile via the settingsStore's schema-derived reset:
+        // every registered toggle returns to its default, then the two
+        // deliberate deviations (stats OFF, playback warning ON) are applied.
+        if (typeof window.__vidaaResetTweaks === 'function') {
+            window.__vidaaResetTweaks({
+                overrides: {
+                    stremio_stream_stats: 'false',
+                    stremio_playback_warning: 'true'
+                }
+            });
+        }
         if (opts && opts.reload === false) {
             if (window.__showVidaaToast) {
                 window.__showVidaaToast('Safe Playback Mode applied', 1800);
@@ -397,29 +384,15 @@
         return true;
     };
 
-    var regInterval = setInterval(function() {
-        if (!window.__registerVidaaSettingsItem) return;
-        clearInterval(regInterval);
+    RT.onRegistryReady(function() {
         window.__registerVidaaSettingsItem({
             id: 'show-vidaa-diagnostics',
             type: 'action',
             label: 'Diagnostics',
-            description: 'Show a copyable debug blob for install, viewport, and VIDAA runtime state.',
+            description: 'Opens the unified diagnostics panel on the copyable debug blob (install, viewport, and VIDAA runtime state) — other tabs cover playback, device, stats, and torrents.',
             onClick: function() {
                 if (window.__showVidaaDiagnostics) window.__showVidaaDiagnostics();
             }
         });
-    }, 1000);
-
-    // The Settings ▸ Vidaa TV "Diagnostics" row is hardcoded in
-    // settings.chunk.js to call window.__showVidaaDiagnostics. To make the new
-    // screenshot-friendly buffering diagnostic reachable from Settings WITHOUT
-    // editing that bundle, we extend this existing entry point: it still shows
-    // the copyable JSON blob (great for GitHub issues), and ALSO pops the big
-    // photo-friendly panel (great for the TV, which has no clipboard).
-    var _origShowVidaaDiagnostics = window.__showVidaaDiagnostics;
-    window.__showVidaaDiagnostics = function() {
-        try { if (typeof _origShowVidaaDiagnostics === 'function') _origShowVidaaDiagnostics(); } catch (e) {}
-        try { if (typeof window.__showVidaaDiagnostic === 'function') window.__showVidaaDiagnostic(); } catch (e) {}
-    };
+    });
 })();

@@ -1,23 +1,14 @@
 (function() {
+    var RT = window.__vidaaRuntime;
     var LS_KEY = 'stremio_low_memory';
-    var PREFIX = '[memory]';
+    var log = RT.logger('memory');
     var MEM_WARN_THRESHOLD = 0.85; // 85% heap usage triggers warning
 
     function isEnabled() {
-        return localStorage.getItem(LS_KEY) !== 'false';
-    }
-
-    function log() {
-        var args = Array.prototype.slice.call(arguments);
-        args.unshift(PREFIX);
-        console.log.apply(console, args);
+        return RT.store.getBool(LS_KEY, true);
     }
 
     function applyLowMemoryConfig() {
-        // Set global flag for other patches
-        window.__lowMemoryMode = true;
-        log('Low memory mode active — setting __lowMemoryMode flag');
-
         // Reduce WebTorrent buffer if client is available
         if (window.__webtorrentClient) {
             try {
@@ -101,16 +92,16 @@
         }
         applyLowMemoryConfig();
         // Re-apply config when WebTorrent client becomes available
-        var clientCheckInterval = setInterval(function() {
+        var clientCheckInterval = RT.poll(function() {
             if (window.__webtorrentClient) {
                 applyLowMemoryConfig();
                 clearInterval(clientCheckInterval);
             }
-        }, 2000);
+        }, 2000, { quiet: true });
         // Memory monitoring every 10 seconds
-        setInterval(monitorMemory, 10000);
+        RT.poll(monitorMemory, 10000, { quiet: true });
         // Piece deselection sweep every 30 seconds
-        setInterval(deselectionSweep, 30000);
+        RT.poll(deselectionSweep, 30000, { quiet: true });
         log('Low memory mode initialised');
     }
 
@@ -118,15 +109,13 @@
         window.__registerCommunityToggle({
             id: 'low-memory-toggle',
             lsKey: LS_KEY,
+            defaultValue: true,
             title: 'Low Memory Mode',
             description: 'Reduces buffer sizes and cleans up played torrent pieces to prevent buffering on low-RAM TVs',
             onToggle: function(nowEnabled) {
                 log('Toggled:', nowEnabled ? 'ON' : 'OFF');
                 if (nowEnabled) {
-                    window.__lowMemoryMode = true;
                     applyLowMemoryConfig();
-                } else {
-                    window.__lowMemoryMode = false;
                 }
             }
         });

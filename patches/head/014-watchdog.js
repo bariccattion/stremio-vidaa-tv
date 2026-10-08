@@ -1,12 +1,13 @@
 // Watchdog — auto-recover from UI freeze
 (function() {
+    var log = window.__vidaaRuntime.logger('watchdog');
     window.__WATCHDOG_PAUSE__ = false;
     var lastTick = Date.now();
     setInterval(function() { lastTick = Date.now(); }, 1000);
     setInterval(function() {
         if (window.__WATCHDOG_PAUSE__) { lastTick = Date.now(); return; }
         if (Date.now() - lastTick > 15000) {
-            console.error('[watchdog] UI freeze detected (>15s), reloading');
+            log.error('UI freeze detected (>15s), reloading');
             location.reload();
         }
     }, 5000);

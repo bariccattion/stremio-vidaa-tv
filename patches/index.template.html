@@ -31,10 +31,16 @@
     </style>
     <title>Stremio - Freedom to Stream</title>
     <script>
-{{patches/head/001-server-url-config.js}}
+{{patches/head/000-vidaa-runtime.js}}
+    </script>
+    <script>
+{{patches/head/001-server-url.js}}
     </script>
     <script>
 {{patches/head/002-esc-helper.js}}
+    </script>
+    <script>
+{{patches/head/002b-vidaa-keys.js}}
     </script>
     <script>
 {{patches/head/003-vidaa-keyboard-fix.js}}
@@ -60,12 +66,6 @@
 {{patches/head/004-build-commit-sw-register.js}}
 </script>
 <script>
-{{patches/head/005-server-url-sync-to-core.js}}
-</script>
-<script>
-{{patches/head/006-server-url-auto-reload.js}}
-</script>
-<script>
 {{patches/head/007-dv-hdr-smart-handling.js}}
 </script>
 <script>
@@ -82,9 +82,6 @@
 </script>
 <script>
 {{patches/head/012-native-player-launcher.js}}
-</script>
-<script>
-{{patches/head/013-server-health-monitor.js}}
 </script>
 <script>
 {{patches/head/014-watchdog.js}}
@@ -129,9 +126,6 @@
 {{patches/head/027-subtitle-off-option.js}}
 </script>
 <script>
-{{patches/head/028-native-handoff-title-watched.js}}
-</script>
-<script>
 {{patches/head/029-subtitle-full-filenames.js}}
 </script>
 <script>
@@ -141,7 +135,25 @@
 {{patches/head/031-webtorrent-streaming.js}}
 </script>
 <script>
-{{patches/head/032-vidaa-settings-community-features.js}}
+{{patches/head/032a-vidaa-settings-store.js}}
+    </script>
+    <script>
+{{patches/head/032b-force-stereo.js}}
+    </script>
+    <script>
+{{patches/head/032c-audio-delay.js}}
+    </script>
+    <script>
+{{patches/head/032d-autoplay-best.js}}
+    </script>
+    <script>
+{{patches/head/032e-mark-season-watched.js}}
+    </script>
+    <script>
+{{patches/head/032f-subtitle-drift.js}}
+    </script>
+    <script>
+{{patches/head/032g-vidaa-settings-ui.js}}
 </script>
 
 <!-- #22: Low Memory Mode -->
@@ -170,9 +182,6 @@
 {{patches/head/038-auto-native-player.js}}
 </script>
 <script>
-{{patches/head/039-pollers-honor-quiet-mode.js}}
-</script>
-<script>
 {{patches/head/040-honest-stall-messaging.js}}
 </script>
 <script>
@@ -183,6 +192,9 @@
 </script>
 <script>
 {{patches/head/043-server-url-manager.js}}
+</script>
+<script>
+{{patches/head/044-vidaa-diagnostics.js}}
 </script>
 
 </html>

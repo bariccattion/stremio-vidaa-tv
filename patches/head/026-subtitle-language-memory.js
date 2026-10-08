@@ -2,6 +2,8 @@
 // Stores the user's selected subtitle language and auto-selects matching track
 // when a new video starts.
 (function() {
+    var RT = window.__vidaaRuntime;
+    var log = RT.logger('subs');
     var LANG_KEY = 'stremio_subtitle_lang';
 
     function getSavedLang() {
@@ -11,7 +13,7 @@
     var lastPlayerHash = '';
     var appliedForHash = '';
 
-    setInterval(function() {
+    RT.poll(function() {
         var hash = window.location.hash || '';
         if (hash.indexOf('#/player/') !== 0) { lastPlayerHash = ''; return; }
 
@@ -74,8 +76,8 @@
                             action: 'Player',
                             args: { action: 'SetProp', args: { propName: 'selectedSubtitleTrackId', propValue: tracks[j].id } }
                         }, 'player');
-                        console.log('[subs] Auto-selected subtitle language:', savedLang, 'track:', tracks[j].id);
-                    } catch(e) { console.log('[subs] Failed to auto-select subtitle:', e.message); }
+                        log('Auto-selected subtitle language:', savedLang, 'track:', tracks[j].id);
+                    } catch(e) { log('Failed to auto-select subtitle:', e.message); }
                     return;
                 }
             }
@@ -89,11 +91,11 @@
                             action: 'Player',
                             args: { action: 'SetProp', args: { propName: 'selectedSubtitleTrackId', propValue: tracks[k].id } }
                         }, 'player');
-                        console.log('[subs] Auto-selected subtitle (partial match):', tLang2, 'track:', tracks[k].id);
+                        log('Auto-selected subtitle (partial match):', tLang2, 'track:', tracks[k].id);
                     } catch(e) {}
                     return;
                 }
             }
         }).catch(function() {});
-    }, 3000);
+    }, 3000, { quiet: true });
 })();

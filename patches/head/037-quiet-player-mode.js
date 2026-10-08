@@ -1,21 +1,25 @@
 /* Quiet Player Mode toggle.
  *
- * During playback, the v7 patch layer runs ~15 setIntervals and a
- * MutationObserver. Cumulatively they can steal enough CPU on a
- * MediaTek VIDAA SoC to starve the <video> element's decoder thread,
- * causing the classic "5 seconds of playback then buffer" pattern on
- * high-bitrate 4K streams. When this toggle is ON, all OUR polling
- * intervals that respect `window.__QUIET_PLAYER_ACTIVE__` will skip
- * their tick while the user is on a player route. The core Stremio
- * intervals are left alone.
+ * During playback, the v7 patch layer historically ran ~15 always-on
+ * setIntervals. Cumulatively they can steal enough CPU on a MediaTek
+ * VIDAA SoC to starve the <video> element's decoder thread, causing the
+ * classic "5 seconds of playback then buffer" pattern on high-bitrate 4K
+ * streams. When this toggle is ON, every poller registered through the
+ * runtime scheduler (window.__vidaaRuntime.poll) skips its tick while the
+ * user is on a player route — see patch 000. Safety-critical timers (the
+ * freeze watchdog) and playback-critical watchers (magnet interception,
+ * auto-native handoff, stall monitor, subtitle pickers) deliberately stay
+ * live and are registered with quiet:false. The core Stremio intervals
+ * are left alone.
  *
  * Off by default — only helps users who are actually buffering.
  */
 (function() {
+    var RT = window.__vidaaRuntime;
     var LS_KEY = 'stremio_quiet_player';
-    function isEnabled() { return localStorage.getItem(LS_KEY) === 'true'; }
+    function isEnabled() { return RT.store.getBool(LS_KEY, false); }
 
-    // Public flag — checked by other patches' poll ticks.
+    // Public flag — read by the runtime poller scheduler (RT.poll).
     window.__isQuietPlayerModeActive = function() {
         if (!isEnabled()) return false;
         return (window.location.hash || '').indexOf('#/player/') === 0;
@@ -29,16 +33,14 @@
     setInterval(applyQuiet, 2000);
 
     // Register Settings toggle.
-    var reg = setInterval(function() {
-        if (!window.__registerVidaaSettingsItem) return;
-        clearInterval(reg);
+    RT.onRegistryReady(function() {
         window.__registerVidaaSettingsItem({
             id: 'quiet-player-toggle',
             type: 'toggle',
             label: 'Quiet Player Mode',
-            description: 'Pauses background checks (server health, memory poll, subtitle DOM scan, quality indicator refresh, DV stall watch) while a video is playing. Frees CPU for the video decoder. Turn ON if streams buffer even with Real-Debrid.',
+            description: 'Pauses the VIDAA layer’s background polling (server mirror and health checks, memory monitors, quality indicator refresh, subtitle persistence watchers, title cache) while a video is playing, freeing CPU for the video decoder. Playback-critical features keep running. Turn ON if streams buffer even with Real-Debrid.',
             lsKey: LS_KEY,
             defaultValue: false
         });
-    }, 200);
+    });
 })();

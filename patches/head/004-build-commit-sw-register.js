@@ -8,7 +8,7 @@
                     newWorker.addEventListener('statechange', function() {
                         if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
                             newWorker.postMessage('skipWaiting');
-                            console.log('[sw] New version installed, refreshing...');
+                            window.__vidaaRuntime.logger('sw')('New version installed, refreshing...');
                             setTimeout(function() { location.reload(); }, 1000);
                         }
                     });

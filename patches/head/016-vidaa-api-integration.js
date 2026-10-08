@@ -3,6 +3,7 @@
     // Only run on VIDAA devices
     try { Hisense_GetOSVersion(); } catch(e) { return; }
 
+    var log = window.__vidaaRuntime.logger('device');
     window.__VIDAA_DEVICE__ = true;
 
     // Register GitHub Pages as trusted domain (enables privileged APIs on future loads)
@@ -16,10 +17,10 @@
         }
         if (!found) {
             var result = Hisense_AddInsecureDomain(ghDomain);
-            console.log('[vidaa] Registered trusted domain:', ghDomain, result);
+            log('Registered trusted domain:', ghDomain, result);
         }
     } catch(e) {
-        console.log('[vidaa] AddInsecureDomain not available:', e.message);
+        log('AddInsecureDomain not available:', e.message);
     }
 
     // Normalize a VIDAA capability value to a friendly label.
@@ -77,7 +78,7 @@
         try { caps.model = Hisense_GetModelName(); } catch(e) {}
         try { caps.firmware = Hisense_GetFirmWareVersion(); } catch(e) {}
         try { caps.osVersion = Hisense_GetOSVersion(); } catch(e) {}
-        console.log('[vidaa] Device caps:', JSON.stringify(caps));
+        log('Device caps:', JSON.stringify(caps));
     } catch(e) {}
 
     // Register observers for real-time video state
@@ -89,7 +90,7 @@
                 try {
                     Hisense_RegisterObserver(key, function(val) {
                         window.__VIDAA_STATE__[key] = val;
-                        console.log('[vidaa] Observer:', key, '=', val);
+                        log('Observer:', key, '=', val);
                     });
                 } catch(e) {}
             })(keys[j]);

@@ -22,14 +22,15 @@
         }, 5000);
     }
 
-    document.addEventListener('keydown', function() {
-        if ((window.location.hash || '').indexOf('#/player/') === 0 && indicator) {
+    // Any keypress in the player refreshes the indicator's visibility clock.
+    window.__vidaaKeys.on('*', function() {
+        if (indicator) {
             indicator.style.transition = 'none';
             showIndicator();
         }
-    });
+    }, { route: 'player', priority: -100 });
 
-    setInterval(function() {
+    window.__vidaaRuntime.poll(function() {
         var hash = window.location.hash || '';
         if (hash.indexOf('#/player/') !== 0) {
             if (indicator) { indicator.style.display = 'none'; indicator.style.opacity = '0'; }
@@ -69,5 +70,5 @@
         // Only refresh content — do NOT auto-show. The indicator is shown on Red button
         // press (in player with stats disabled) or on any keydown in player. This prevents
         // the icon from being stuck visible permanently.
-    }, 3000);
+    }, 3000, { quiet: true });
 })();

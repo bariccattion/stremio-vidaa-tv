@@ -11,38 +11,19 @@
 (function() {
     'use strict';
 
+    var RT = window.__vidaaRuntime;
+
     var CARD_TOGGLE_KEY = 'stremio_heavy_choice_card';
 
     function serverReady() {
-        var u = window.__STREMIO_SERVER_URL__ || '';
-        return !!(u && u !== 'http://127.0.0.1:11470');
+        return RT.serverConfigured();
     }
 
-    // ── Server URL setter — reuses the EXISTING mechanism (localStorage key
-    // 'stremio_server_url' + window.__STREMIO_SERVER_URL__) and pushes the new
-    // URL into the WASM core the same way the server-sync block does. ───────
+    // ── Server URL setter — thin wrapper over the serverUrl module (001):
+    // write-through localStorage + global + best-effort core push, plus the
+    // mirror that reconciles the core afterwards.
     window.__setStremioServerUrl = function(url) {
-        url = (url || '').trim().replace(/\/+$/, '');
-        if (!url) return false;
-        try { localStorage.setItem('stremio_server_url', url); } catch(e) {}
-        window.__STREMIO_SERVER_URL__ = url;
-        // Best-effort push into core (matches the server-sync IIFE near the top).
-        try {
-            if (window.core && typeof window.core.getState === 'function') {
-                window.core.getState('ctx').then(function(ctxState) {
-                    if (!ctxState || !ctxState.profile || !ctxState.profile.settings) return;
-                    var cur = ctxState.profile.settings;
-                    if (cur.streamingServerUrl === url) return;
-                    var ns = {};
-                    for (var k in cur) ns[k] = cur[k];
-                    ns.streamingServerUrl = url;
-                    return window.core.dispatch({ action: 'Ctx', args: { action: 'UpdateSettings', args: ns } }, 'ctx').then(function() {
-                        return window.core.dispatch({ action: 'StreamingServer', args: { action: 'Reload' } }, 'streaming_server');
-                    });
-                }).catch(function() {});
-            }
-        } catch(e) {}
-        return true;
+        return window.__serverUrl ? window.__serverUrl.set(url) : false;
     };
 
     // ── Read the current title's streams from core and find a direct-play
@@ -127,7 +108,7 @@
     function cardEnabled() {
         // Default ON: this is the user's lifeline when a stream won't play. Still
         // toggleable, and only ever appears on the explicit no-escape stall path.
-        try { return localStorage.getItem(CARD_TOGGLE_KEY) !== 'false'; } catch(e) { return true; }
+        return RT.store.getBool(CARD_TOGGLE_KEY, true);
     }
     window.__heavyChoiceCardEnabled = cardEnabled;
 
@@ -142,11 +123,7 @@
     }
 
     function smallToast(text) {
-        var t = document.createElement('div');
-        t.style.cssText = 'position:fixed;top:40px;left:50%;transform:translateX(-50%);background:rgba(123,91,245,0.95);color:#fff;padding:10px 22px;border-radius:8px;font-family:PlusJakartaSans,sans-serif;font-size:0.92rem;z-index:100000;max-width:80%;text-align:center;line-height:1.4;';
-        t.textContent = text;
-        document.body.appendChild(t);
-        setTimeout(function() { if (t.parentNode) t.remove(); }, 5000);
+        RT.toast(text, { at: 'top', ms: 5000 });
     }
 
     // ── (A) The non-blocking choice card. ──────────────────────────────────
@@ -293,9 +270,7 @@
     };
 
     // ── Settings registration: choice-card toggle + helper-server launcher. ──
-    var reg = setInterval(function() {
-        if (!window.__registerVidaaSettingsItem) return;
-        clearInterval(reg);
+    RT.onRegistryReady(function() {
         window.__registerVidaaSettingsItem({
             id: 'heavy-stream-choice-card-toggle',
             type: 'toggle',
@@ -312,5 +287,5 @@
             onClick: function() { window.__showHelperServerSetup(); },
             onToggle: function() { window.__showHelperServerSetup(); }
         });
-    }, 200);
+    });
 })();

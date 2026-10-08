@@ -2,7 +2,7 @@
 // Tests for the server URL configuration (patch 043) — integrated with the
 // NATIVE Settings > Server > Edit URL dialog instead of custom input UI:
 //   • the dialog is a plain field (chunk edit): local value, committed once
-//     on Confirm, then mirrored to localStorage by patch 006 so future
+//     on Confirm, then mirrored to localStorage by the serverUrl module (001) so future
 //     sessions auto-reconnect
 //   • "Auto-Detect" button inside the native dialog sweeps the LAN for a
 //     Stremio server on port 11470 — STRICTLY manual, never at startup
@@ -49,6 +49,7 @@ test.describe('Native Edit URL dialog integration (patch 043)', () => {
 
   test('built settings.chunk.js wires Auto-Detect + ping into the native dialog', () => {
     const src = fs.readFileSync('app/settings.chunk.js', 'utf8');
+    const indexSrc = fs.readFileSync('app/index.html', 'utf8');
     // Plain field: no live per-keystroke round-trip, commit once on Confirm.
     expect(src).not.toContain('onChange: w');
     expect(src).toContain('var _urlVal = t.settings().streamingServerUrl');
@@ -61,10 +62,13 @@ test.describe('Native Edit URL dialog integration (patch 043)', () => {
     expect(src).toContain('window.__serverDialogTest(_finalUrl)');
     // Custom overlay entry point fully gone.
     expect(src).not.toContain('__showServerUrlManager');
-    // The Vidaa TV section kept its other entries.
-    expect(src).toContain('Quiet Player Mode');
-    expect(src).toContain('Playback Diagnostics');
-    expect(src).toContain('Exit Stremio');
+    expect(indexSrc).not.toContain('__showServerUrlManager');
+    // The Vidaa TV section is a thin chunk seam delegating to patch 032g;
+    // its entries live in the inlined patch layer.
+    expect(src).toContain('__vidaaSettingsRows(g, p)');
+    expect(indexSrc).toContain('Quiet Player Mode');
+    expect(indexSrc).toContain('Playback Diagnostics');
+    expect(indexSrc).toContain('Exit Stremio');
   });
 
   test('Confirm pings the saved URL and toasts the result (reachable)', async ({ page }) => {
@@ -200,11 +204,11 @@ test.describe('Native Edit URL dialog integration (patch 043)', () => {
 // ---------------------------------------------------------------------------
 // The core checks the streaming server ONCE with no retry; one failed check
 // sticks as "Offline" while the server works. Fixes under test:
-//   • patch 013 heals the core (rate-limited StreamingServer/Reload) when the
+//   • the serverUrl module heals the core (rate-limited StreamingServer/Reload) when the
 //     page-level probe says online but the core has no baseUrl
 //   • the SERVER settings row accepts the page-level health as online evidence
 //   • the Confirm toast falls back to /heartbeat and never cries wolf
-//   • patch 006 mirrors core URL changes to localStorage on every screen
+//   • the serverUrl module mirrors core URL changes to localStorage on every screen
 // ==========================================================================
 test.describe('False-Offline healing and honest status', () => {
   function installMockCore(page, initialState) {
@@ -301,7 +305,7 @@ test.describe('False-Offline healing and honest status', () => {
     expect(hints.httpsHttps).toBe('');
   });
 
-  test('patch 006 mirrors core URL changes to localStorage on every screen', async ({ page }) => {
+  test('the serverUrl module mirrors core URL changes to localStorage on every screen', async ({ page }) => {
     await installMockCore(page, { baseUrl: null, transportUrl: 'http://192.168.1.10:11470' });
     // Baseline URL must exist before the first effective poll (after the 10s
     // warmup); init scripts run in order, so this overrides the mock's null.

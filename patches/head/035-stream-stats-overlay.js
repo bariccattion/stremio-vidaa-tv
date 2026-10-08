@@ -1,17 +1,12 @@
 (function() {
+    var RT = window.__vidaaRuntime;
     var LS_KEY = 'stremio_stream_stats';
-    var PREFIX = '[stats]';
+    var log = RT.logger('stats');
     var UPDATE_INTERVAL = 2000;
     var TOGGLE_KEY = 457; // Info/Display remote button
 
     function isEnabled() {
-        return localStorage.getItem(LS_KEY) !== 'false';
-    }
-
-    function log() {
-        var args = Array.prototype.slice.call(arguments);
-        args.unshift(PREFIX);
-        console.log.apply(console, args);
+        return RT.store.getBool(LS_KEY, true);
     }
 
     function inPlayerRoute() {
@@ -78,10 +73,7 @@
         return rate;
     }
 
-    function updateStats() {
-        if (!overlay || !statsVisible) return;
-
-        var video = document.querySelector('video');
+    function collectStatsLines(video) {
         var lines = [];
 
         // Resolution
@@ -127,7 +119,12 @@
             lines.push('Memory     : unavailable');
         }
 
-        overlay.textContent = lines.join('\n');
+        return lines;
+    }
+
+    function updateStats() {
+        if (!overlay || !statsVisible) return;
+        overlay.textContent = collectStatsLines(document.querySelector('video')).join('\n');
     }
 
     function startUpdating() {
@@ -158,17 +155,14 @@
         }
     }
 
-    function onKeyDown(e) {
-        if (!isEnabled()) return;
-        if (!inPlayerRoute()) return;
-        // Toggle with Info (457) or Red (403) — simple on/off, no auto-hide
-        if (e.keyCode === 457 || e.keyCode === 403) {
-            e.stopPropagation();
-            statsVisible = !statsVisible;
-            if (overlay) overlay.style.display = statsVisible ? 'block' : 'none';
-            log('Stats overlay', statsVisible ? 'shown' : 'hidden');
-        }
-    }
+    // Toggle with Info (457) or Red (403) — simple on/off, no auto-hide.
+    // The `when` gate reads the toggle live, so the enable/disable machinery
+    // around add/removeEventListener disappears.
+    window.__vidaaKeys.on(['info', 'red'], function() {
+        statsVisible = !statsVisible;
+        if (overlay) overlay.style.display = statsVisible ? 'block' : 'none';
+        log('Stats overlay', statsVisible ? 'shown' : 'hidden');
+    }, { route: 'player', when: function() { return isEnabled(); } });
 
     function init() {
         if (!isEnabled()) {
@@ -176,7 +170,6 @@
             return;
         }
         window.addEventListener('hashchange', onHashChange);
-        window.addEventListener('keydown', onKeyDown);
         onHashChange();
         log('Stream stats overlay initialised');
     }
@@ -185,22 +178,40 @@
         window.__registerCommunityToggle({
             id: 'stream-stats-toggle',
             lsKey: LS_KEY,
+            defaultValue: true,
             title: 'Stream Stats Overlay',
             description: 'Shows resolution, buffer health, download speed, peers, and memory in the player (toggle with Info button)',
             onToggle: function(nowEnabled) {
                 log('Toggled:', nowEnabled ? 'ON' : 'OFF');
                 if (nowEnabled) {
                     window.addEventListener('hashchange', onHashChange);
-                    window.addEventListener('keydown', onKeyDown);
                     onHashChange();
                 } else {
                     stopUpdating();
                     window.removeEventListener('hashchange', onHashChange);
-                    window.removeEventListener('keydown', onKeyDown);
                 }
             }
         });
     }
+
+    // Snapshot section of the unified diagnostics panel (044) — shares
+    // collectStatsLines with the live in-player overlay.
+    RT.when(function() { return !!window.__vidaaRegisterDiagnostic; }, function() {
+        window.__vidaaRegisterDiagnostic({
+            id: 'stats',
+            label: 'Stream Stats',
+            render: function(body) {
+                var pre = document.createElement('div');
+                pre.style.cssText = 'font-family:monospace;font-size:15px;line-height:1.8;color:#dfe2ff;white-space:pre;';
+                pre.textContent = collectStatsLines(document.querySelector('video')).join('\n');
+                body.appendChild(pre);
+                var note = document.createElement('div');
+                note.style.cssText = 'font-size:12px;color:rgba(255,255,255,0.45);margin-top:10px;';
+                note.textContent = 'Snapshot taken when this tab opened — the in-player overlay (Info/Red key during playback) updates live every 2s.';
+                body.appendChild(note);
+            }
+        });
+    });
 
     init();
 })();

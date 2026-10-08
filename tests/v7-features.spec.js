@@ -347,15 +347,22 @@ test.describe('Remote control key mappings', () => {
 test.describe('Native VIDAA settings and handoff', () => {
   test('native settings bundle exposes all projector toggles as Settings rows', async ({ page }) => {
     await page.goto('/');
-    const bundle = await page.evaluate(async () => {
-      const response = await fetch('/settings.chunk.js');
-      return response.text();
+    const sources = await page.evaluate(async () => {
+      const [bundle, index] = await Promise.all([
+        fetch('/settings.chunk.js').then(r => r.text()),
+        fetch('/index.html').then(r => r.text())
+      ]);
+      return { bundle, index };
     });
-    expect(bundle).toContain('label: "Vidaa TV"');
-    expect(bundle).toContain('Quiet Player Mode');
-    expect(bundle).toContain('Auto Native Player for MKV');
-    expect(bundle).toContain('Auto Native Player (all streams)');
-    expect(bundle).toContain('Audio Offset: ');
+    // The chunk edit is a thin seam: the section + delegation to patch 032g.
+    expect(sources.bundle).toContain('label: "Vidaa TV"');
+    expect(sources.bundle).toContain('__vidaaSettingsRows(g, p)');
+    // The rows themselves are built from the settingsStore registry by
+    // patch JS inlined into index.html.
+    expect(sources.index).toContain('Quiet Player Mode');
+    expect(sources.index).toContain('Auto Native Player for MKV');
+    expect(sources.index).toContain('Auto Native Player (all streams)');
+    expect(sources.index).toContain('Audio Offset: ');
   });
 
   test('native player handoff uses container-aware MIME types', async ({ page }) => {
@@ -512,6 +519,15 @@ test.describe('720p zoom detection', () => {
 });
 
 test.describe('Installer flows', () => {
+  // The installer page is NOT part of the deployed site — it only runs from
+  // the local DNS-spoof flow (installer/server.py serves installer/ from a
+  // repo clone, and the VIDAA install APIs are vidaahub.com-only). Tests
+  // load the real page straight from the repo via route fulfilment.
+  test.beforeEach(async ({ page }) => {
+    await page.route(/\/installer\/(index\.html)?$/, (route) =>
+      route.fulfill({ path: 'installer/index.html', contentType: 'text/html' }));
+  });
+
   test('direct launcher install does not persist a false-confirmed localStorage flag', async ({ browser }) => {
     const context = await browser.newContext();
     const page = await context.newPage();
@@ -755,8 +771,8 @@ test.describe('Diagnostics', () => {
 
     await page.goto('/');
     await page.evaluate(() => window.__showVidaaDiagnostics());
-    await expect(page.locator('#vidaa-diagnostics-modal')).toBeVisible();
-    const blob = await page.locator('#vidaa-diagnostics-modal textarea').inputValue();
+    await expect(page.locator('#vidaa-diagnostic-panel')).toBeVisible();
+    const blob = await page.locator('#vidaa-diagnostic-panel textarea').inputValue();
     expect(blob).toContain('"build": "');
     expect(blob).toContain('"vidaaDetected": true');
   });
@@ -850,12 +866,12 @@ test.describe('Diagnostics', () => {
     });
 
     await page.evaluate(() => window.__showPlaybackDiagnostics());
-    await expect(page.locator('#vidaa-playback-diagnostics-modal')).toBeVisible();
+    await expect(page.locator('#vidaa-diagnostic-panel')).toBeVisible();
     await page.waitForFunction(() => {
-      const el = document.querySelector('#vidaa-playback-diagnostics-modal textarea');
+      const el = document.querySelector('#vidaa-diagnostic-panel textarea');
       return el && el.value.indexOf('"currentSrcHost": "cdn.example.com"') !== -1;
     });
-    const blob = await page.locator('#vidaa-playback-diagnostics-modal textarea').inputValue();
+    const blob = await page.locator('#vidaa-diagnostic-panel textarea').inputValue();
     expect(blob).toContain('"videoCodec": "h264"');
     expect(blob).toContain('"selectedSubtitleTrackId": "sub-en"');
     expect(blob).toContain('"currentSrcHost": "cdn.example.com"');

@@ -1,31 +1,13 @@
 (function() {
+    var RT = window.__vidaaRuntime;
     var LS_KEY = 'stremio_auto_rebuffer';
-    var PREFIX = '[rebuffer]';
+    var log = RT.logger('rebuffer');
     var CHECK_INTERVAL = 2000;   // ms between currentTime checks
     var STALL_THRESHOLD = 8000;  // ms of no progress = stall
     var MAX_RETRIES = 3;
 
     function isEnabled() {
-        return localStorage.getItem(LS_KEY) !== 'false';
-    }
-
-    function log() {
-        var args = Array.prototype.slice.call(arguments);
-        args.unshift(PREFIX);
-        console.log.apply(console, args);
-    }
-
-    function showToast(msg) {
-        var existing = document.getElementById('__rebuffer-toast');
-        if (existing) existing.remove();
-        var toast = document.createElement('div');
-        toast.id = '__rebuffer-toast';
-        toast.textContent = msg;
-        toast.style.cssText = 'position:fixed;bottom:60px;left:50%;transform:translateX(-50%);' +
-            'background:rgba(0,0,0,0.85);color:#fff;padding:12px 20px;border-radius:8px;' +
-            'font-size:14px;z-index:99999;pointer-events:none;';
-        document.body.appendChild(toast);
-        setTimeout(function() { if (toast.parentNode) toast.remove(); }, 5000);
+        return RT.store.getBool(LS_KEY, true);
     }
 
     function inPlayerRoute() {
@@ -223,6 +205,7 @@
         window.__registerCommunityToggle({
             id: 'auto-rebuffer-toggle',
             lsKey: LS_KEY,
+            defaultValue: true,
             title: 'Auto-Rebuffer on Stall',
             description: 'Detects playback stalls and automatically attempts to resume without user intervention',
             onToggle: function(nowEnabled) {

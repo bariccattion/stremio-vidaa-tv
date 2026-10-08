@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="app/logo.png" alt="Stremio" width="120" />
+  <img src="upstream/theater-1.9.2/logo.png" alt="Stremio" width="120" />
 </p>
 
 <h1 align="center">Stremio for Hisense Projectors &amp; VIDAA TVs</h1>
@@ -198,39 +198,38 @@ This build includes fixes and features that go above and beyond what standard st
 
 | Fix | Description |
 |---|---|
-| **Suppress F key crash** ([#10](https://github.com/bariccattion/stremio-vidaa-tv/issues/10)) | Prevents the VIDAA browser from crashing when the F key (fullscreen) is pressed. Fullscreen is meaningless on a TV — the browser is always fullscreen. |
-| **Exit button for TV** ([#6](https://github.com/bariccattion/stremio-vidaa-tv/issues/6)) | Adds an "Exit Stremio" button to Settings. Wired to `Hisense_Exit()` on VIDAA devices for a clean app exit. |
+| **Suppress F key crash** | Prevents the VIDAA browser from crashing when the F key (fullscreen) is pressed. Fullscreen is meaningless on a TV — the browser is always fullscreen. |
+| **Exit button for TV** | Adds an "Exit Stremio" button to Settings. Wired to `Hisense_Exit()` on VIDAA devices for a clean app exit. |
 
 ### Playback Persistence
 
 | Fix | Description |
 |---|---|
-| **Save playback speed & volume** ([#9](https://github.com/bariccattion/stremio-vidaa-tv/issues/9)) | Remembers your preferred playback speed and volume across sessions via localStorage. Automatically restored on each video. |
-| **Fix subtitle size on start** ([#8](https://github.com/bariccattion/stremio-vidaa-tv/issues/8)) | Persists subtitle size preference and force-applies it when the player initialises, preventing the core from resetting it. |
-| **Remember subtitle language** ([#7](https://github.com/bariccattion/stremio-vidaa-tv/issues/7)) | Stores your selected subtitle language and auto-selects a matching track when a new video starts. Supports partial language matching (e.g. "en" matches "eng"). |
+| **Save playback speed & volume** | Remembers your preferred playback speed and volume across sessions via localStorage. Automatically restored on each video. |
+| **Fix subtitle size on start** | Persists subtitle size preference and force-applies it when the player initialises, preventing the core from resetting it. |
+| **Remember subtitle language** | Stores your selected subtitle language and auto-selects a matching track when a new video starts. Supports partial language matching (e.g. "en" matches "eng"). |
 
 ### Subtitle Enhancements
 
 | Fix | Description |
 |---|---|
-| **Subtitle off/unload option** ([#11](https://github.com/bariccattion/stremio-vidaa-tv/issues/11)) | Injects a "None/Off" option into the subtitle picker so you can disable subtitles entirely. Standard Stremio has no way to turn subtitles off once enabled. |
-| **Full subtitle filenames** ([#14](https://github.com/bariccattion/stremio-vidaa-tv/issues/14)) | Intercepts addon subtitle responses and caches full filenames. Patches the subtitle picker DOM to show descriptive names instead of truncated labels. |
+| **Subtitle off/unload option** | Injects a "None/Off" option into the subtitle picker so you can disable subtitles entirely. Standard Stremio has no way to turn subtitles off once enabled. |
+| **Full subtitle filenames** | Intercepts addon subtitle responses and caches full filenames. Patches the subtitle picker DOM to show descriptive names instead of truncated labels. |
 
 ### Native Player Integration
 
 | Fix | Description |
 |---|---|
-| **Full title to native player** ([#12](https://github.com/bariccattion/stremio-vidaa-tv/issues/12)) | Scrapes the title from the player DOM and detail pages, then passes it in the native VIDAA player handoff payload so the system player shows the correct title. |
-| **Mark as watched after native handoff** ([#13](https://github.com/bariccattion/stremio-vidaa-tv/issues/13)) | After launching the native player, estimates progress and dispatches a mark-as-watched action to stremio-core so your library stays in sync. |
+| **Full title to native player** | Scrapes the title from the player DOM and detail pages, then passes it in the native VIDAA player handoff payload so the system player shows the correct title. |
+| **Mark as watched after native handoff** | After launching the native player, estimates progress and dispatches a mark-as-watched action to stremio-core so your library stays in sync. |
 
 ### Performance
 
 | Fix | Description |
 |---|---|
-| **Prefetch next episode** ([#15](https://github.com/bariccattion/stremio-vidaa-tv/issues/15)) | When watching a series, automatically fires a background fetch for the next episode's stream URL to warm the streaming server cache and reduce load time. |
+| **Prefetch next episode** | When watching a series, automatically fires a background fetch for the next episode's stream URL to warm the streaming server cache and reduce load time. |
 
-### Direct Torrent Streaming (Experimental) ([#16](https://github.com/bariccattion/stremio-vidaa-tv/issues/16))
-
+### Direct Torrent Streaming (Experimental)
 Streams magnet links from torrent addons directly in the browser via [WebTorrent](https://webtorrent.io) — no streaming server, no debrid. **Off by default**; enable it in Settings ▸ Torrent Streaming.
 
 **Set honest expectations: this is a last-resort path, not a debrid replacement.** A browser can only discover torrent peers over WebRTC, and almost nothing seeds over WebRTC. **We measured 0/40 popular Torrentio torrents with any WebRTC-capable peers (Oct 2026).** Unless a torrent has a web seed (archive.org-style), playback simply cannot start. For reliable streaming, use Real-Debrid with Torrentio or run a [Stremio streaming server](#streaming-server-optional).

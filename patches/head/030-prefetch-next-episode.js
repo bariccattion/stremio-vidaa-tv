@@ -3,16 +3,17 @@
 // a background fetch to warm the streaming server cache, reducing load time
 // when they advance to the next episode.
 (function() {
+    var RT = window.__vidaaRuntime;
+    var log = RT.logger('prefetch');
     var prefetchedUrl = '';
     var lastPlayerHash = '';
 
-    setInterval(function() {
+    // Quiet Player Mode (scheduler-level) skips the prefetch entirely — the
+    // background fetch competes with the main stream's bandwidth.
+    RT.poll(function() {
         var hash = window.location.hash || '';
         if (hash.indexOf('#/player/') !== 0) { lastPlayerHash = ''; prefetchedUrl = ''; return; }
         if (hash === lastPlayerHash) return;
-        // In Quiet Player Mode skip the prefetch — the background fetch
-        // competes with the main stream's bandwidth and can cause stalls.
-        if (window.__QUIET_PLAYER_ACTIVE__) return;
         lastPlayerHash = hash;
         prefetchedUrl = '';
 
@@ -32,7 +33,7 @@
                 } catch(e) {}
 
                 if (!nextVideo) {
-                    console.log('[prefetch] No next episode data found');
+                    log('No next episode data found');
                     return;
                 }
 
@@ -47,14 +48,14 @@
                         var serverUrl = window.__STREMIO_SERVER_URL__;
                         if (serverUrl && serverUrl !== 'http://127.0.0.1:11470') {
                             // Try to construct a prefetch hint URL for the server
-                            console.log('[prefetch] Next episode available via deepLink:', nextVideo.deepLinks.player);
+                            log('Next episode available via deepLink:', nextVideo.deepLinks.player);
                         }
                     }
                 } catch(e) {}
 
                 if (nextUrl && nextUrl !== prefetchedUrl) {
                     prefetchedUrl = nextUrl;
-                    console.log('[prefetch] Warming cache for next episode:', nextUrl.substring(0, 80));
+                    log('Warming cache for next episode:', nextUrl.substring(0, 80));
 
                     // Fire a HEAD request to warm the streaming server cache
                     // This triggers the server to start fetching/preparing the stream
@@ -63,16 +64,16 @@
                             method: 'HEAD',
                             mode: 'no-cors'
                         }).then(function() {
-                            console.log('[prefetch] Cache warm request sent successfully');
+                            log('Cache warm request sent successfully');
                         }).catch(function() {
                             // no-cors may "fail" but the request still goes out
-                            console.log('[prefetch] Cache warm request sent (no-cors)');
+                            log('Cache warm request sent (no-cors)');
                         });
                     } catch(e) {
-                        console.log('[prefetch] Failed to send prefetch:', e.message);
+                        log('Failed to send prefetch:', e.message);
                     }
                 }
             }).catch(function() {});
         }, 15000); // Wait 15s into playback before prefetching next
-    }, 5000);
+    }, 5000, { quiet: true });
 })();

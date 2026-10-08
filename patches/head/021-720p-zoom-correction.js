@@ -2,6 +2,7 @@
     // Auto mode detects 720p VIDAA viewports and scales the UI only.
     // Player layout stays untouched unless users explicitly opt into legacy player zoom.
     (function() {
+        var log = window.__vidaaRuntime.logger('zoom');
         var MODE_KEY = 'stremio_720p_mode';
         var ZOOM_KEY = 'stremio_720p_zoom';
         var PLAYER_ZOOM_KEY = 'stremio_zoom_disable_in_player';
@@ -119,7 +120,7 @@
         function refreshZoom(reason) {
             var shouldApply = shouldApplyUiZoom();
             setUiZoom(shouldApply);
-            console.log('[zoom] ' + (shouldApply ? 'Applied' : 'Removed') + ' UI zoom' + (reason ? ' (' + reason + ')' : ''));
+            log((shouldApply ? 'Applied' : 'Removed') + ' UI zoom' + (reason ? ' (' + reason + ')' : ''));
         }
 
         function nextMode(mode) {
@@ -139,7 +140,7 @@
         };
         window.__removeZoom = function() {
             setUiZoom(false);
-            console.log('[zoom] Removed UI zoom (settings-off)');
+            log('Removed UI zoom (settings-off)');
         };
         window.__refreshZoom = refreshZoom;
         window.__set720pMode = function(mode) {
@@ -214,7 +215,7 @@
             var params = new URLSearchParams(window.location.search);
             if (params.get('nozoom') === '1') {
                 set720pMode('off');
-                console.log('[zoom] Zoom disabled via ?nozoom=1');
+                log('Zoom disabled via ?nozoom=1');
                 return;
             }
 

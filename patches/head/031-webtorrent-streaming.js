@@ -17,8 +17,10 @@
 (function() {
     'use strict';
 
+    var RT = window.__vidaaRuntime;
+
     var LS_KEY = 'stremio_webtorrent_enabled';
-    var LOG_PREFIX = '[torrent]';
+    var log = RT.logger('torrent');
     var MAX_BUFFER_MB = 100;
     var OVERLAY_HIDE_DELAY = 10000;
     var PEER_STALL_TIMEOUT = 30000;
@@ -42,17 +44,11 @@
     var stallCardEl = null;
 
     function isEnabled() {
-        try { return localStorage.getItem(LS_KEY) === 'true'; } catch(e) { return false; }
+        return RT.store.getBool(LS_KEY, false);
     }
 
     function setEnabled(val) {
-        try { localStorage.setItem(LS_KEY, val ? 'true' : 'false'); } catch(e) {}
-    }
-
-    function log() {
-        var args = [LOG_PREFIX];
-        for (var i = 0; i < arguments.length; i++) args.push(arguments[i]);
-        console.log.apply(console, args);
+        RT.store.set(LS_KEY, !!val);
     }
 
     // ─── Library Loader (vendored + pinned, same origin — no CDN) ──
@@ -270,14 +266,6 @@
             window.removeEventListener('hashchange', removeMsg);
         };
         window.addEventListener('hashchange', removeMsg);
-        // Also remove on Back key (keyCode 8 or 461)
-        var keyHandler = function(e) {
-            if (e.keyCode === 8 || e.keyCode === 461 || e.keyCode === 10009) {
-                removeMsg();
-                document.removeEventListener('keydown', keyHandler, true);
-            }
-        };
-        document.addEventListener('keydown', keyHandler, true);
     }
 
     function streamMagnet(magnetURI, videoEl) {
@@ -406,11 +394,10 @@
     }
 
     // ─── Video Source Interception ─────────────────────────────────
-    // Poll for video element src changes — more reliable on VIDAA than MutationObserver
-    setInterval(function() {
-        var hash = window.location.hash || '';
-        if (hash.indexOf('#/player/') !== 0) return;
-
+    // Poll for video element src changes — more reliable on VIDAA than MutationObserver.
+    // Player-route-gated but never quiet-gated: interception is how magnet
+    // playback STARTS, so it must run even in Quiet Player Mode.
+    RT.poll(function() {
         var video = document.querySelector('video');
         if (!video) return;
 
@@ -432,12 +419,10 @@
         video.load();
 
         streamMagnet(src, video);
-    }, 500);
+    }, 500, { route: 'player', quiet: false });
 
     // Also try to intercept via core state
-    setInterval(function() {
-        var hash = window.location.hash || '';
-        if (hash.indexOf('#/player/') !== 0) return;
+    RT.poll(function() {
         try {
             var state = window.core && window.core.getState('player');
             if (!state) return;
@@ -468,7 +453,7 @@
 
             streamMagnet(streamUrl, video);
         } catch(e) {}
-    }, 1000);
+    }, 1000, { route: 'player', quiet: false });
 
     // ─── Cleanup on Navigation Away from Player ───────────────────
     var wasInPlayer = false;
@@ -486,28 +471,29 @@
     // ─── Info / Red Button Shows Overlay ──────────────────────────
     // Some Hisense projector remotes (55Q6QV, M2 Pro, PX3-Pro, C2) have no
     // Info / Display button at all — only the four colour keys. Accept Red
-    // (403) as an alias so those users can still see the torrent stats.
-    document.addEventListener('keydown', function(e) {
-        if (!activeTorrent) return;
-        var isInfo = e.keyCode === 457 || e.keyCode === 73;
-        var isRed = e.keyCode === 403;
-        if (!isInfo && !isRed) return;
-        var hash = window.location.hash || '';
-        if (hash.indexOf('#/player/') !== 0) return;
+    // (403) and 'i' as aliases so those users can still see the torrent stats.
+    window.__vidaaKeys.on(['info', 'i', 'red'], function() {
         showOverlay();
-    }, true);
+    }, { route: 'player', when: function() { return !!activeTorrent; } });
+
+    // Back dismisses the "Torrent Stream Detected" fullscreen message
+    // (hashchange removes it too). The keypress continues to the app, as it
+    // always did — this only cleans the message up faster.
+    window.__vidaaKeys.on('back', function() {
+        var msg = document.getElementById('webtorrent-disabled-msg');
+        if (msg) msg.remove();
+    }, { priority: 800, when: function() { return !!document.getElementById('webtorrent-disabled-msg'); } });
 
     // ─── Settings Toggle Registration ────────────────────────────────
     // Register with the unified VIDAA settings tab system
-    var wtRegInterval = setInterval(function() {
-        if (!window.__registerVidaaSettingsItem) return;
-        clearInterval(wtRegInterval);
+    RT.onRegistryReady(function() {
         window.__registerVidaaSettingsItem({
             id: 'webtorrent-toggle',
             type: 'toggle',
             label: 'Torrent Streaming',
             description: 'Stream magnet links directly in the browser via WebTorrent',
             lsKey: LS_KEY,
+            defaultValue: false,
             onToggle: function(nowEnabled) {
                 setEnabled(nowEnabled);
                 log('WebTorrent toggled:', nowEnabled ? 'ON' : 'OFF');
@@ -519,7 +505,7 @@
             }
         });
         log('WebTorrent registered with VIDAA settings tab');
-    }, 200);
+    });
 
     // ─── Programmatic API ─────────────────────────────────────────
     window.__toggleWebTorrent = function() {

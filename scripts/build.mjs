@@ -122,9 +122,12 @@ copyIn(join(root, 'patches', 'custom', 'core.chunk.js'), 'core.chunk.js');
 copyIn(join(root, 'upstream', 'vendor', 'webtorrent', '3.0.21', 'webtorrent.min.js'), 'webtorrent.min.js');
 copyIn(join(root, 'upstream', 'vendor', 'webtorrent', '3.0.21', 'sw.min.js'), 'webtorrent-sw.min.js');
 
-// The installer UI is part of the deployed site (the DNS-spoof flow and the
-// installer/ README reference it over HTTP), so it ships in app/ as well.
-for (const f of collectFiles(join(root, 'installer'), join(root, 'installer'))) copyIn(f.abs, join('installer', f.rel));
+// Nothing from installer/ ships in app/. The installer page only works on
+// the vidaahub.com domain (VIDAA injects Hisense_*/HiUtils_* there), so it
+// is served by the LOCAL DNS-spoof flow: installer/server.py serves the
+// repo's installer/ folder while the page registers the DEPLOYED site as
+// the app URL. Publishing it on gh-pages would be a dead, confusing copy —
+// the tests load it straight from the repo instead (route fulfilment).
 
 // ---------- 3. Apply chunk edits ----------
 const editsDir = join(root, 'patches', 'chunk-edits');
@@ -148,16 +151,25 @@ for (const defFile of readdirSync(editsDir).filter(n => n.endsWith('.json')).sor
 // ---------- 4. index.html ----------
 let html = toLf(readFileSync(join(root, 'patches', 'index.template.html'), 'utf8'));
 const placeholderRe = /\{\{patches\/(head\/[0-9a-z-]+\.js)\}\}/g;
+const referenced = new Set();
 let ph;
 while ((ph = placeholderRe.exec(html)) !== null) {
   const patchPath = join(root, 'patches', ph[1]);
   if (!existsSync(patchPath)) die(`template references missing patch ${ph[1]}`);
+  referenced.add(ph[1]);
   const body = toLf(readFileSync(patchPath, 'utf8')).replace(/\n$/, '');
   html = html.replace(ph[0], () => body);
 }
+// Reverse check: a patch file the template forgot would silently never ship.
+for (const name of readdirSync(join(root, 'patches', 'head')).filter(n => n.endsWith('.js'))) {
+  if (!referenced.has(`head/${name}`)) die(`patches/head/${name} exists but the template never inlines it`);
+}
 if (/\{\{patches\//.test(html)) die('unresolved {{patches/...}} placeholder in template');
 html = html.replaceAll('{{VERSION}}', VERSION);
-html = html.replace(/(__BUILD_COMMIT__ = ')[a-f0-9]+(')/, `$1${COMMIT}$2`);
+const stampRe = /(__BUILD_COMMIT__ = ')[a-f0-9]+(')/;
+if (!stampRe.test(html)) die('__BUILD_COMMIT__ stamp not found — patch 004 no longer matches the build stamp pattern');
+html = html.replace(stampRe, `$1${COMMIT}$2`);
+if (!(new RegExp(`__BUILD_COMMIT__ = '${COMMIT}'`)).test(html)) die('__BUILD_COMMIT__ stamp failed to land in index.html');
 writeFileSync(join(APP, 'index.html'), html);
 
 // ---------- 5. sw.js ----------

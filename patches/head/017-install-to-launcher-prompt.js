@@ -1,6 +1,7 @@
 // Install to Launcher — first-run prompt for VIDAA devices
 (function() {
     if (!window.__VIDAA_DEVICE__) return;
+    var log = window.__vidaaRuntime.logger('install');
     var SESSION_DISMISS_KEY = 'stremio_install_banner_dismissed_session';
     var LAST_SUCCESS_KEY = 'stremio_install_banner_last_success_at';
     var METHOD_KEY = 'stremio_install_banner_method';
@@ -94,7 +95,7 @@
             } else if (window.opera_omi && typeof window.opera_omi.sendPlatformMessage === 'function') {
                 window.opera_omi.sendPlatformMessage(JSON.stringify(refreshMsg));
             }
-        } catch(refreshErr) { console.log('[install] launcher refresh failed:', refreshErr.message); }
+        } catch(refreshErr) { log('launcher refresh failed:', refreshErr.message); }
     }
 
     function onInstallAccepted(method) {
@@ -137,7 +138,7 @@
                         return;
                     }
                 } catch (e) {
-                    console.log('[install] registry path failed:', e.message);
+                    log('registry path failed:', e.message);
                 }
                 // Registry path unavailable or refused — fall through to legacy.
             }

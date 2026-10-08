@@ -19,33 +19,11 @@
 (function() {
     'use strict';
 
+    var RT = window.__vidaaRuntime;
+
     var SCAN_TIMEOUT_MS = 1200;   // per-candidate probe timeout during the LAN sweep
     var SCAN_CONCURRENCY = 32;    // candidates probed in parallel
     var TEST_TIMEOUT_MS = 3000;   // Confirm-time ping timeout
-
-    // ── Probe. Same contract as patch 041's shared probe (GET /settings with
-    // an AbortController timeout); kept as a guarded fallback so this patch
-    // stays self-contained. ─────────────────────────────────────────────────
-    function probe(url, cb, timeoutMs) {
-        if (typeof window.__probeStremioServer === 'function') { window.__probeStremioServer(url, cb, timeoutMs); return; }
-        url = (url || '').replace(/\/+$/, '');
-        if (!url) { cb({ url: url, reachable: false, note: 'no URL' }); return; }
-        var done = false;
-        var ctrl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
-        var t = setTimeout(function() { if (ctrl) { try { ctrl.abort(); } catch (e) {} } if (!done) { done = true; cb({ url: url, reachable: false, note: 'timed out' }); } }, timeoutMs || 2500);
-        try {
-            fetch(url + '/settings', ctrl ? { signal: ctrl.signal } : undefined)
-                .then(function(r) { return r.ok ? r.json().catch(function() { return {}; }) : Promise.reject(new Error('HTTP ' + r.status)); })
-                .then(function(data) {
-                    if (done) return; done = true; clearTimeout(t);
-                    var v = data && (data.serverVersion || data.version || (data.values && data.values.serverVersion));
-                    cb({ url: url, reachable: true, note: v ? ('v' + v) : 'online' });
-                })
-                .catch(function(e) { if (done) return; done = true; clearTimeout(t); cb({ url: url, reachable: false, note: (e && e.message) || 'unreachable' }); });
-        } catch (e) {
-            if (!done) { done = true; clearTimeout(t); cb({ url: url, reachable: false, note: 'fetch error' }); }
-        }
-    }
 
     // ── URL parsing / candidate building for the LAN sweep. ────────────────
     function parseUrlParts(url) {
@@ -92,18 +70,11 @@
     }
 
     // One reachability probe during the sweep: does ANYTHING answer on this
-    // port? A bare "settled" latch (not just AbortController) guarantees the
-    // worker moves on even on engines without AbortController support.
+    // port? The runtime's fetchTimeout settles exactly once (with or without
+    // AbortController support) so the worker always moves on.
     function sweepOne(url, cb) {
-        var settled = false;
-        function done(hit) { if (settled) return; settled = true; clearTimeout(timer); cb(hit); }
-        var ctrl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
-        var timer = setTimeout(function() { if (ctrl) { try { ctrl.abort(); } catch (e) {} } done(false); }, SCAN_TIMEOUT_MS);
-        try {
-            fetch(url + '/heartbeat', ctrl ? { signal: ctrl.signal } : undefined)
-                .then(function() { done(true); })
-                .catch(function() { done(false); });
-        } catch (e) { done(false); }
+        RT.fetchTimeout(url + '/heartbeat', SCAN_TIMEOUT_MS)
+            .then(function() { cb(true); }, function() { cb(false); });
     }
 
     // ── window.__autoDetectStremioServer(opts, onProgress, onDone) ─────────
@@ -162,7 +133,7 @@
                 // Something answered on this port — confirm it is actually a
                 // Stremio server (GET /settings) and grab its version.
                 confirming++;
-                probe(url, function(res) {
+                RT.probeServer(url, function(res) {
                     confirming--;
                     if (!stop.cancelled && !stop.finished && res.reachable) { winner = { url: res.url, note: res.note }; finish(winner); return; }
                     worker();
@@ -176,23 +147,8 @@
     };
 
     // ── Toast — non-interactive feedback, never traps the remote. ──────────
-    var toastEl = null;
-    var toastHideTimer = null;
     function toast(text, sticky) {
-        try {
-            if (!toastEl || !toastEl.parentNode) {
-                toastEl = document.createElement('div');
-                toastEl.id = 'dv-server-toast';
-                toastEl.style.cssText = 'position:fixed;top:40px;left:50%;transform:translateX(-50%);background:rgba(123,91,245,0.95);color:#fff;padding:10px 22px;border-radius:8px;font-family:PlusJakartaSans,sans-serif;font-size:0.92rem;z-index:100000;max-width:80%;text-align:center;line-height:1.4;';
-                document.body.appendChild(toastEl);
-            }
-            toastEl.textContent = text;
-            if (toastHideTimer) { clearTimeout(toastHideTimer); toastHideTimer = null; }
-            if (!sticky) toastHideTimer = setTimeout(function() {
-                if (toastEl && toastEl.parentNode) toastEl.remove();
-                toastEl = null;
-            }, 5000);
-        } catch (e) {}
+        RT.toast(text, { at: 'top', id: 'dv-server-toast', ms: 5000, sticky: sticky });
     }
 
     // ── Confirm-time ping (called by the chunk-edited native dialog right
@@ -201,14 +157,8 @@
     // server builds, response shapes) — fall back to a /heartbeat liveness
     // check, the same one the health monitor uses, before reporting failure.
     function heartbeatOk(url, cb) {
-        var done = false;
-        var ctrl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
-        var t = setTimeout(function() { if (ctrl) { try { ctrl.abort(); } catch (e) {} } if (!done) { done = true; cb(false); } }, TEST_TIMEOUT_MS);
-        try {
-            fetch(url + '/heartbeat', ctrl ? { signal: ctrl.signal } : undefined)
-                .then(function(r) { if (done) return; done = true; clearTimeout(t); cb(r.ok); })
-                .catch(function() { if (done) return; done = true; clearTimeout(t); cb(false); });
-        } catch (e) { if (!done) { done = true; clearTimeout(t); cb(false); } }
+        RT.fetchTimeout(url + '/heartbeat', TEST_TIMEOUT_MS)
+            .then(function(r) { cb(r.ok); }, function() { cb(false); });
     }
 
     // TV browsers can block fetch checks from an https page to an http LAN
@@ -225,7 +175,7 @@
         if (!url) return;
         var t0 = Date.now();
         toast('Checking ' + url + ' …', true);
-        probe(url, function(res) {
+        RT.probeServer(url, function(res) {
             if (res.reachable) {
                 toast('✓ Streaming server reachable (' + res.note + ', ' + (Date.now() - t0) + ' ms)');
                 return;

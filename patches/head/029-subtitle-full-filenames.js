@@ -3,6 +3,7 @@
 // source, codec, and release group. This patch intercepts addon subtitle responses,
 // caches full labels, and patches the subtitle picker DOM to show them.
 (function() {
+    var log = window.__vidaaRuntime.logger('subs');
     var fullSubLabels = {};
 
     // Intercept fetch responses that contain subtitle data from addons
@@ -28,7 +29,7 @@
                                     fullSubLabels[id] = fullLabel;
                                 }
                             }
-                            console.log('[subs] Cached', Object.keys(fullSubLabels).length, 'full subtitle labels');
+                            log('Cached', Object.keys(fullSubLabels).length, 'full subtitle labels');
                         }
                     }).catch(function() {});
                 }).catch(function() {});

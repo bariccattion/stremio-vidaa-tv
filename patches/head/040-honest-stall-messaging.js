@@ -9,15 +9,15 @@
 // Toggleable; OFF by default to avoid surprising users who recover on their own.
 (function() {
     'use strict';
+    var RT = window.__vidaaRuntime;
     var LS_KEY = 'stremio_honest_stall_msg';
     var lastShownAt = 0;
 
     function enabled() {
-        try { return localStorage.getItem(LS_KEY) === 'true'; } catch(e) { return false; }
+        return RT.store.getBool(LS_KEY, false);
     }
     function serverReady() {
-        var u = window.__STREMIO_SERVER_URL__ || '';
-        return !!(u && u !== 'http://127.0.0.1:11470');
+        return RT.serverConfigured();
     }
 
     window.__showHonestStallMessage = function() {
@@ -52,9 +52,7 @@
     };
 
     // Toggleable per project convention.
-    var reg = setInterval(function() {
-        if (!window.__registerVidaaSettingsItem) return;
-        clearInterval(reg);
+    RT.onRegistryReady(function() {
         window.__registerVidaaSettingsItem({
             id: 'honest-stall-message-toggle',
             type: 'toggle',
@@ -63,7 +61,7 @@
             lsKey: LS_KEY,
             defaultValue: false
         });
-    }, 200);
+    });
 
     // Expose the gate so other code can decide whether to call us.
     window.__honestStallEnabled = enabled;

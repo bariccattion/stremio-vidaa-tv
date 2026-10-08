@@ -24,10 +24,12 @@
  * Both are off by default on non-VIDAA devices via the hasNative gate.
  */
 (function() {
+    var RT = window.__vidaaRuntime;
+    var log = RT.logger('auto-native');
     var LS_KEY_ALL = 'stremio_auto_native_player';
     var LS_KEY_MKV = 'stremio_auto_native_player_mkv';
-    function modeAll() { return localStorage.getItem(LS_KEY_ALL) === 'true'; }
-    function modeMkvOnly() { return localStorage.getItem(LS_KEY_MKV) === 'true'; }
+    function modeAll() { return RT.store.getBool(LS_KEY_ALL, false); }
+    function modeMkvOnly() { return RT.store.getBool(LS_KEY_MKV, false); }
 
     function hasNative() {
         try { return typeof omi_platform !== 'undefined' && typeof omi_platform.sendPlatformMessage === 'function'; } catch(e) { return false; }
@@ -79,7 +81,7 @@
         if (video.readyState < 1) return;
 
         lastHandedOffUrl = src;
-        console.log('[auto-native] Handing off to native player:', src.substring(0, 100));
+        log('Handing off to native player:', src.substring(0, 100));
 
         // Pause the browser player to free the decoder before we launch the native one.
         try { video.pause(); } catch(e) {}
@@ -99,9 +101,7 @@
         }
     }, 1500);
 
-    var reg = setInterval(function() {
-        if (!window.__registerVidaaSettingsItem) return;
-        clearInterval(reg);
+    RT.onRegistryReady(function() {
         window.__registerVidaaSettingsItem({
             id: 'auto-native-mkv-toggle',
             type: 'toggle',
@@ -118,5 +118,5 @@
             lsKey: LS_KEY_ALL,
             defaultValue: false
         });
-    }, 200);
+    });
 })();

@@ -2,6 +2,7 @@
 // Persists user's preferred playback rate and volume in localStorage.
 // Restores them automatically when a new video starts playing.
 (function() {
+    var log = window.__vidaaRuntime.logger('playback');
     var SPEED_KEY = 'stremio_playback_speed';
     var VOLUME_KEY = 'stremio_volume';
     var applied = false;
@@ -40,12 +41,12 @@
             var savedSpeed = getSavedSpeed();
             if (savedSpeed !== null && video.playbackRate !== savedSpeed) {
                 video.playbackRate = savedSpeed;
-                console.log('[playback] Restored speed:', savedSpeed);
+                log('Restored speed:', savedSpeed);
             }
             var savedVol = getSavedVolume();
             if (savedVol !== null && Math.abs(video.volume - savedVol) > 0.01) {
                 video.volume = savedVol;
-                console.log('[playback] Restored volume:', savedVol);
+                log('Restored volume:', savedVol);
             }
             applied = true;
             lastPersistedSpeed = video.playbackRate;

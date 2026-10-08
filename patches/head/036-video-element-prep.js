@@ -23,6 +23,7 @@
  *      in, then stall forever" pattern reporters describe.
  */
 (function() {
+    var log = window.__vidaaRuntime.logger('early-stall');
     var preconnectedOrigins = {};
     function addPreconnect(origin) {
         if (!origin || preconnectedOrigins[origin]) return;
@@ -72,7 +73,7 @@
             if (!playStart) return;                   // never actually started
             if (Date.now() - playStart > 20000) return; // only care about early stalls
             stalls++;
-            console.warn('[early-stall] waiting/stalled event #' + stalls);
+            log.warn('waiting/stalled event #' + stalls);
             if (stalls >= 2 && typeof window.__launchNativePlayer === 'function') {
                 var inPlayer = (window.location.hash || '').indexOf('#/player/') === 0;
                 if (!inPlayer) return;
@@ -81,7 +82,7 @@
                 var allOn = localStorage.getItem('stremio_auto_native_player') === 'true';
                 var mkvOn = localStorage.getItem('stremio_auto_native_player_mkv') === 'true';
                 if (!allOn && !mkvOn) {
-                    console.log('[early-stall] stream is stalling; user has no auto-native toggle on — no silent handoff');
+                    log('stream is stalling; user has no auto-native toggle on — no silent handoff');
                     // No auto-handoff path. Offer the user a CHOICE — never block,
                     // skip, or auto-change the stream. Detect "too heavy" from the
                     // probe data and/or the current source container.
@@ -103,7 +104,7 @@
                     }
                     return;
                 }
-                console.log('[early-stall] 2+ early stalls, handing off to native player');
+                log('2+ early stalls, handing off to native player');
                 try { video.pause(); } catch(e) {}
                 // H5: act on the VERIFIED result. The launcher resolves a boolean
                 // reflecting whether the native app actually foregrounded. On

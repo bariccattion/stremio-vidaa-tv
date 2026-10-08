@@ -8,6 +8,9 @@
 // NOTE: Other TVs may have different codec support — users can disable
 // the playback warning via Settings > Vidaa TV > Playback Warning
 (function() {
+    var RT = window.__vidaaRuntime;
+    var log = RT.logger('stream');
+    var dvLog = RT.logger('dv');
     var WARN_KEY = 'stremio_playback_warning';
     window.__DV_PROFILE7_DETECTED__ = false;
     window.__STREAM_INFO__ = {};
@@ -39,7 +42,7 @@
 
             // Check for >4K resolution (decoder limit)
             if (video.videoWidth > 4096 || video.videoHeight > 2160) {
-                console.warn('[stream] Resolution ' + video.videoWidth + 'x' + video.videoHeight + ' exceeds 4K — may cause issues');
+                log.warn('Resolution ' + video.videoWidth + 'x' + video.videoHeight + ' exceeds 4K — may cause issues');
                 window.__STREAM_INFO__.oversize = true;
             }
 
@@ -50,7 +53,7 @@
                     window.__STREAM_INFO__.stallCheck = Date.now();
                 } else if (Date.now() - window.__STREAM_INFO__.stallCheck > 8000) {
                     // 8 seconds with no progress — likely a black screen
-                    console.warn('[stream] Playback stalled — possible codec/container issue');
+                    log.warn('Playback stalled — possible codec/container issue');
                     showPlaybackWarning();
                     window.__STREAM_INFO__.stallCheck = null;
                 }
@@ -91,7 +94,7 @@
                                     window.__STREAM_INFO__.height = s.height;
                                     if (s.codec && /^dv(he|h1)/.test(s.codec)) {
                                         window.__DV_PROFILE7_DETECTED__ = s.codec;
-                                        console.log('[DV] Detected:', s.codec, s.width + 'x' + s.height, '— letting browser attempt native playback');
+                                        dvLog('Detected:', s.codec, s.width + 'x' + s.height, '— letting browser attempt native playback');
                                     }
                                 }
                             }
@@ -222,9 +225,7 @@
     window.__showPlaybackWarning = showPlaybackWarning;
 
     // Register settings toggle
-    var regInterval = setInterval(function() {
-        if (!window.__registerVidaaSettingsItem) return;
-        clearInterval(regInterval);
+    RT.onRegistryReady(function() {
         window.__registerVidaaSettingsItem({
             id: 'playback-warning-toggle',
             type: 'toggle',
@@ -233,5 +234,5 @@
             lsKey: WARN_KEY,
             defaultValue: false
         });
-    }, 200);
+    });
 })();

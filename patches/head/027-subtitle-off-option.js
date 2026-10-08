@@ -2,6 +2,7 @@
 // Stremio's subtitle picker doesn't include a "None/Off" option.
 // This patch injects one into the subtitle picker DOM and wires it to disable subtitles.
 (function() {
+    var log = window.__vidaaRuntime.logger('subs');
     var injected = false;
     var lastHash = '';
 
@@ -13,9 +14,9 @@
                 action: 'Player',
                 args: { action: 'SetProp', args: { propName: 'selectedSubtitleTrackId', propValue: null } }
             }, 'player');
-            console.log('[subs] Subtitles disabled');
+            log('Subtitles disabled');
         } catch(e) {
-            console.log('[subs] Failed to disable subtitles:', e.message);
+            log('Failed to disable subtitles:', e.message);
         }
         // Also try to remove subtitle display elements directly
         try {
@@ -61,7 +62,7 @@
 
         // Insert at the beginning
         container.insertBefore(offOption, container.firstChild);
-        console.log('[subs] Injected "Off" option into subtitle picker');
+        log('Injected "Off" option into subtitle picker');
     });
 
     // Start observing when in player

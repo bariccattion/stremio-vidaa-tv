@@ -31,6 +31,10 @@
 (function() {
     'use strict';
 
+    var RT = window.__vidaaRuntime;
+    var log = RT.logger('native');
+    var watchedLog = RT.logger('watched');
+
     var HANDOFF_KEY = 'stremio_native_handoff';   // also the watched-tracking toggle key
     var DEFAULT_VERIFY_MS = 2000;                  // window to observe app backgrounding
     var DEFAULT_WATCHED_DELAY_MS = 30000;          // delay before marking watched (verified only)
@@ -71,7 +75,7 @@
     }
 
     // Cache the title from detail pages so we have it when the player opens.
-    setInterval(function() {
+    RT.poll(function() {
         var hash = window.location.hash || '';
         if (hash.indexOf('#/detail') === 0 || hash.indexOf('#/metadetails') === 0) {
             try {
@@ -86,7 +90,7 @@
                 }
             } catch(e) {}
         }
-    }, 2000);
+    }, 2000, { route: 'nonplayer' });
 
     // Returns a Promise<boolean> that resolves true ONLY if the document is
     // observed to background within `ms`. Conservative: no signal => false.
@@ -134,19 +138,19 @@
                             action: 'Ctx',
                             args: { action: 'MarkAsWatched', args: { id: metaId, videoId: videoId, isWatched: true } }
                         }, 'ctx');
-                        console.log('[watched] Marked as watched (VERIFIED handoff):', metaId, videoId);
+                        watchedLog('Marked as watched (VERIFIED handoff):', metaId, videoId);
                     } catch(e) {
-                        console.log('[watched] MarkAsWatched dispatch failed:', e.message);
+                        watchedLog('MarkAsWatched dispatch failed:', e.message);
                     }
                 }
             }).catch(function(e) {
-                console.log('[watched] Failed to get player state:', e.message);
+                watchedLog('Failed to get player state:', e.message);
             });
         } catch(e) {}
     }
 
     function watchedTrackingEnabled() {
-        try { return localStorage.getItem(HANDOFF_KEY) === 'true'; } catch(e) { return false; }
+        return RT.store.getBool(HANDOFF_KEY, false);
     }
 
     // Shared recovery helper for ALL auto/recovery call sites. When a handoff
@@ -199,18 +203,18 @@
         var watchedDelay = opts.watchedDelayMs != null ? opts.watchedDelayMs : DEFAULT_WATCHED_DELAY_MS;
 
         if (!hasNative()) {
-            console.log('[native] omi_platform unavailable — native player not supported on this device');
+            log('omi_platform unavailable — native player not supported on this device');
             return Promise.resolve(false);
         }
         if (!url) {
             var video = document.querySelector('video');
             url = video ? video.currentSrc || video.src : null;
         }
-        if (!url) { console.log('[native] No stream URL found'); return Promise.resolve(false); }
+        if (!url) { log('No stream URL found'); return Promise.resolve(false); }
 
         var title = getPlayerTitle() || 'Stremio';
         var mimeType = guessNativeMimeType(url);
-        console.log('[native] Attempting native handoff (title:', title + '):', String(url).substring(0, 100));
+        log('Attempting native handoff (title:', title + '):', String(url).substring(0, 100));
 
         // Arm verification BEFORE sending so we don't miss a fast backgrounding.
         var verifyPromise = verifyBackgrounding(verifyMs);
@@ -225,18 +229,18 @@
         for (var i = 0; i < messages.length; i++) {
             try {
                 omi_platform.sendPlatformMessage(JSON.stringify(messages[i]));
-                console.log('[native] Sent (unacked):', messages[i].type);
+                log('Sent (unacked):', messages[i].type);
             } catch(e) {
-                console.log('[native] Send threw:', messages[i].type, e.message);
+                log('Send threw:', messages[i].type, e.message);
             }
         }
 
         return verifyPromise.then(function(opened) {
             if (!opened) {
-                console.warn('[native] No backgrounding signal within ' + verifyMs + 'ms — treating handoff as FAILED.');
+                log.warn('No backgrounding signal within ' + verifyMs + 'ms — treating handoff as FAILED.');
                 return false;
             }
-            console.log('[native] Backgrounding observed — handoff VERIFIED.');
+            log('Backgrounding observed — handoff VERIFIED.');
             // Only on a VERIFIED handoff, and only if the user enabled watched
             // tracking, record + (after delay) mark as watched. No resume-point
             // corruption ever.
@@ -257,19 +261,16 @@
     };
 
     // Yellow button (405) — launch native player with current stream.
-    // Always bind; check omi_platform at press time so later-injected APIs still work.
-    document.addEventListener('keydown', function(e) {
-        if (e.keyCode !== 405) return;
-        var hash = window.location.hash || '';
-        if (hash.indexOf('#/player/') !== 0) return;
-
+    // Always bound; omi_platform is checked at press time so later-injected
+    // APIs still work.
+    window.__vidaaKeys.on('yellow', function() {
         function mkToast(text, bg) {
-            var toast = document.createElement('div');
-            toast.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:' + (bg || 'rgba(0,0,0,0.9)') + ';color:white;padding:20px 40px;border-radius:12px;font-size:1.2rem;font-family:PlusJakartaSans,sans-serif;z-index:100000;pointer-events:none;text-align:center;max-width:500px;';
-            toast.textContent = text;
-            document.body.appendChild(toast);
-            setTimeout(function() { toast.remove(); }, 3500);
-            return toast;
+            return RT.toast(text, {
+                at: 'center',
+                bg: bg || 'rgba(0,0,0,0.9)',
+                ms: 3500,
+                extra: 'padding:20px 40px;border-radius:12px;font-size:1.2rem;'
+            });
         }
 
         if (!hasNative()) {
@@ -289,14 +290,12 @@
                 mkToast('Couldn’t open the TV’s player — see options', 'rgba(180,60,60,0.92)');
             }
         });
-    });
+    }, { route: 'player' });
 
     // User-toggleable: mark-as-watched after a VERIFIED native handoff. OFF by
     // default — since the handoff itself is unreliable on most VIDAA firmware,
     // we never touch library/watched state unless the user opts in.
-    var watchedReg = setInterval(function() {
-        if (!window.__registerVidaaSettingsItem) return;
-        clearInterval(watchedReg);
+    RT.onRegistryReady(function() {
         window.__registerVidaaSettingsItem({
             id: 'native-handoff-watched-toggle',
             type: 'toggle',
@@ -305,5 +304,5 @@
             lsKey: HANDOFF_KEY,
             defaultValue: false
         });
-    }, 200);
+    });
 })();

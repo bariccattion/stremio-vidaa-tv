@@ -10,7 +10,16 @@ upstream/                  replaceable Stremio artifacts (never hand-edit)
   translations/            47 per-language translation chunks
 UPSTREAM.lock.json         version + source URL + SHA-256 of every upstream file
 patches/                   everything that makes this a VIDAA build
-  head/001-*.js … 042-*.js ordered patch scripts, inlined into index.html at build
+  head/000-*.js … 044-*.js ordered patch scripts, inlined into index.html at build
+                                (000 is the __vidaaRuntime shared toolbox — toast,
+                                logger, store, fetchTimeout, probeServer, when,
+                                onRegistryReady, serverConfigured, poll; 001 is
+                                the serverUrl module owning the streaming server
+                                URL lifecycle: ?server= ingest, boot push-to-core,
+                                core→localStorage mirror, health monitor + heal;
+                                002b is the vidaaKeys dispatcher — the ONE remote
+                                keydown listener, with name→code map, route/when
+                                gates, priorities, and sequence combos)
   chunk-edits/*.json       surgical {find, replace} ops on 3 pristine chunks
   custom/core.chunk.js     the worker-factory shim that swaps in the v5 engine
   index.template.html      page skeleton ({{VERSION}}, {{COMMIT}} stamped at build)
@@ -78,9 +87,40 @@ works, and pin that in `UPSTREAM.lock.json`. Git history holds every predecessor
 
 ## Everyday maintenance
 
-- **Add a patch:** create `patches/head/043-my-patch.js`. It is inlined into
-  `index.html` in filename order — head scripts run before the app's deferred
-  scripts, exactly like the old monolithic `index.html` did.
+- **Add a patch:** create `patches/head/044-my-patch.js` and add its
+  `{{patches/head/...}}` line to `patches/index.template.html` (the build fails
+  if a patch file exists that the template doesn't inline). Head scripts run
+  before the app's deferred scripts, exactly like the old monolithic
+  `index.html` did. Consume `window.__vidaaRuntime` (toast, logger, store,
+  fetchTimeout, probeServer, onRegistryReady, serverConfigured, poll) instead
+  of re-implementing those utilities — log via `var log = RT.logger('my-patch')`
+  so every message carries the uniform `[vidaa:my-patch]` prefix, and register
+  recurring timers through `RT.poll(fn, ms, { route, quiet })` so Quiet Player
+  Mode can silence them (pass `quiet: false` only for safety- or
+  playback-critical pollers).
+- **Add a settings toggle:** register an item with
+  `window.__registerVidaaSettingsItem({ id, type: 'toggle', label,
+  description, lsKey, defaultValue, onToggle })` — that is the whole job.
+  The settingsStore (032a) owns the registry, the settings UI (032g) renders
+  the Vidaa TV section rows from it, and schema-derived resets (Safe Mode)
+  pick up the `defaultValue` automatically. The settings.chunk.js edit is a
+  thin seam that only delegates to `window.__vidaaSettingsRows(g, p)`; never
+  hand-edit UI into the chunk JSON.
+- **Add a diagnostics section:** register with
+  `window.__vidaaRegisterDiagnostic({ id, label, render(bodyEl) })` — the
+  unified panel (044) renders it as a tab next to Device / Debug Blob /
+  Playback / Stream Stats / Torrent. Legacy entry points
+  (`__showVidaaDiagnostics`, `__showPlaybackDiagnostics`,
+  `__showVidaaDiagnostic`, the Green→Red combo) all open the same panel.
+- **Bind a remote key:** register with
+  `window.__vidaaKeys.on(key, handler, opts)` — never add your own
+  keydown listener. Keys are names from the dispatcher's map (red, green,
+  yellow, blue, info, i, channelUp, channelDown, back, f, escape,
+  bracketLeft, bracketRight, or '*'); opts: `route` ('player'/'nonplayer'),
+  `when(e)` (live predicate), `shift`, `priority` (higher wins; reserved
+  1000 modal-close, 900 F-suppress, 800 back-dismiss, 500 combos), and
+  `suppress` (preventDefault + stopPropagation, consuming the press).
+  `'green+red'` declares a sequence combo with `opts.window` ms.
 - **Ship a version bump:** set `"siteVersion"` in `package.json` (drives the
   `?v=N` cache-bust, the on-screen badge, and the service-worker cache name).
   Run a build so the stamp lands everywhere.

@@ -380,7 +380,7 @@ test.describe('Diagnostic panel', () => {
     const text = await page.evaluate(() => {
       window.__STREAM_INFO__ = { videoCodec: 'hevc', width: 3840, height: 2160, container: 'mkv' };
       window.__showVidaaDiagnostic();
-      var panel = document.getElementById('vidaa-diagnostic');
+      var panel = document.getElementById('vidaa-diagnostic-panel');
       return panel ? panel.textContent : '';
     });
     expect(/omi_platform/i.test(text)).toBe(true);
@@ -394,15 +394,15 @@ test.describe('Diagnostic panel', () => {
     const result = await page.evaluate(async () => {
       window.__STREAM_INFO__ = { videoCodec: 'hevc', width: 3840, height: 2160, container: 'mkv' };
       window.__showVidaaDiagnostic();
-      var panel = document.getElementById('vidaa-diagnostic');
+      var panel = document.getElementById('vidaa-diagnostic-panel');
       var text = panel ? panel.textContent : '';
       var hasCodec = /hevc/i.test(text);
       var hasRes = /3840/.test(text) && /2160/.test(text);
-      // Dismiss it.
+      // Dismiss it — the shell's Close button is the modal's first button.
       var closeBtn = panel && panel.querySelector('button');
       if (closeBtn) closeBtn.click();
       await new Promise((r) => setTimeout(r, 50));
-      var dismissed = !document.getElementById('vidaa-diagnostic');
+      var dismissed = !document.getElementById('vidaa-diagnostic-panel');
       return { hasCodec: hasCodec, hasRes: hasRes, dismissed: dismissed };
     });
     expect(result.hasCodec).toBe(true);
@@ -430,7 +430,7 @@ test.describe('Diagnostic panel', () => {
       document.dispatchEvent(new KeyboardEvent('keydown', { keyCode: 404, bubbles: true }));
       document.dispatchEvent(new KeyboardEvent('keydown', { keyCode: 403, bubbles: true }));
       await new Promise((r) => setTimeout(r, 100));
-      return !!document.getElementById('vidaa-diagnostic');
+      return !!document.getElementById('vidaa-diagnostic-panel');
     });
     expect(shown).toBe(true);
   });

@@ -3,6 +3,8 @@
 // This patch persists the user's subtitle size preference and force-applies it
 // via setProp when the player initialises.
 (function() {
+    var RT = window.__vidaaRuntime;
+    var log = RT.logger('subs');
     var SIZE_KEY = 'stremio_subtitle_size';
 
     function getSavedSize() {
@@ -13,7 +15,7 @@
     var lastAppliedSize = null;
     var lastPlayerHash = '';
 
-    setInterval(function() {
+    RT.poll(function() {
         var hash = window.location.hash || '';
         if (hash.indexOf('#/player/') !== 0) { lastPlayerHash = ''; return; }
 
@@ -31,9 +33,9 @@
                             action: 'Player',
                             args: { action: 'SetProp', args: { propName: 'subtitleSize', propValue: savedSize } }
                         }, 'player');
-                        console.log('[subs] Applied saved subtitle size:', savedSize);
+                        log('Applied saved subtitle size:', savedSize);
                         lastAppliedSize = savedSize;
-                    } catch(e) { console.log('[subs] Failed to apply subtitle size:', e.message); }
+                    } catch(e) { log('Failed to apply subtitle size:', e.message); }
                 }, 2000);
             }
         }
@@ -51,5 +53,5 @@
                 }
             }).catch(function() {});
         }
-    }, 3000);
+    }, 3000, { quiet: true });
 })();
