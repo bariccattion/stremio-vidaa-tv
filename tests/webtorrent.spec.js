@@ -1,4 +1,4 @@
-// WebTorrent streaming pipeline (patch 031 + merged service worker).
+// WebTorrent streaming pipeline (torrents/webtorrent-streaming.js + merged service worker).
 // Network-free: verifies the vendored library loads, the streaming server
 // attaches, and the honest-failure wiring is intact. Live-torrent behaviour
 // is exercised manually (see README ▸ Direct Torrent Streaming).
@@ -49,8 +49,8 @@ test('vendored webtorrent loads as a classic script and exposes the v3 API', asy
   expect(api.hasServer).toBeTruthy();
 });
 
-test('patch 031 wires streaming + trackers + honest failure story', () => {
-  const patch = read('patches/head/031-webtorrent-streaming.js');
+test('webtorrent-streaming patch wires streaming + trackers + honest failure story', () => {
+  const patch = read('patches/head/torrents/webtorrent-streaming.js');
   expect(patch).toContain("'wss://tracker.webtorrent.dev'");
   expect(patch).toContain("'wss://open.ftorrent.com'");
   expect(patch).toContain('streamTo');
@@ -62,7 +62,7 @@ test('patch 031 wires streaming + trackers + honest failure story', () => {
 });
 
 test('TRACKERS array is synced: provenance stamp, wss-only entries', () => {
-  const patch = read('patches/head/031-webtorrent-streaming.js');
+  const patch = read('patches/head/torrents/webtorrent-streaming.js');
   expect(patch).toContain('// Synced from ngosang/trackerslist');
   const block = patch.match(/var TRACKERS = \[([\s\S]*?)\];/);
   expect(block).toBeTruthy();
@@ -76,10 +76,10 @@ test('TRACKERS array is synced: provenance stamp, wss-only entries', () => {
 });
 
 test('companion patches exempt /webtorrent/ stream URLs', () => {
-  // 038: handing a SW-served URL to the TV's native player app would break
-  // playback (the native app isn't controlled by the service worker).
-  expect(read('patches/head/038-auto-native-player.js')).toContain("indexOf('/webtorrent/') !== -1");
-  // 036: preconnect/warm-up fetch is pointless same-origin and would
+  // auto-native: handing a SW-served URL to the TV's native player app would
+  // break playback (the native app isn't controlled by the service worker).
+  expect(read('patches/head/player/auto-native.js')).toContain("indexOf('/webtorrent/') !== -1");
+  // video-prep: preconnect/warm-up fetch is pointless same-origin and would
   // double-pull the torrent head.
-  expect(read('patches/head/036-video-element-prep.js')).toContain("indexOf('/webtorrent/') !== -1");
+  expect(read('patches/head/player/video-prep.js')).toContain("indexOf('/webtorrent/') !== -1");
 });

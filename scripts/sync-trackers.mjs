@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /*
- * Sync the WebTorrent tracker list (patch 031) from ngosang/trackerslist.
+ * Sync the WebTorrent tracker list (patches/head/torrents/webtorrent-streaming.js)
  *
  * Public trackers decay constantly (btorrent.xyz is dead, openwebtorrent.com
  * intermittent), so the list is data, not code. ngosang/trackerslist is a bot
@@ -33,7 +33,7 @@ import { fileURLToPath } from 'node:url';
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const die = (msg) => { console.error(`sync-trackers: ${msg}`); process.exit(1); };
 
-const PATCH = join(root, 'patches', 'head', '031-webtorrent-streaming.js');
+const PATCH = join(root, 'patches', 'head', 'torrents', 'webtorrent-streaming.js');
 const BASE = 'https://raw.githubusercontent.com/ngosang/trackerslist/master';
 const WS_LIST = `${BASE}/trackers_all_ws.txt`;
 const ALL_LIST = `${BASE}/trackers_all.txt`;
@@ -78,12 +78,12 @@ for (const line of [...collect(wsRaw), ...collect(allRaw)]) {
 if (trackers.length === 0) die('upstream lists contain no wss:// trackers — refusing to write an empty list');
 if (dropped.length) console.log(`dropped ${dropped.length} non-wss entries (udp/http announce is unusable in a browser)`);
 
-// 3. Rewrite the TRACKERS array in patch 031. The provenance comment above it
-//    is part of the synced block — the sync replaces it wholesale.
+// 3. Rewrite the TRACKERS array in the webtorrent-streaming patch. The provenance
+//    comment above it is part of the synced block — the sync replaces it wholesale.
 const body = readFileSync(PATCH, 'utf8');
 const arrayRe = /^[ \t]*var TRACKERS = \[[\s\S]*?\];/m;
 if ((body.match(new RegExp(arrayRe.source, 'gm')) || []).length !== 1) {
-  die('TRACKERS array did not match exactly once — patch 031 changed shape, review manually');
+  die('TRACKERS array did not match exactly once — the webtorrent-streaming patch changed shape, review manually');
 }
 const oldTrackers = (body.match(/var TRACKERS = \[([\s\S]*?)\];/) || ['', ''])[1]
   .split(',')

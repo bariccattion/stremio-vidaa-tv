@@ -13,7 +13,9 @@
  *   patches/chunk-edits/*.json    surgical {find, replace} ops applied to pristine
  *                                 chunks — each op must match EXACTLY once or the
  *                                 build fails loudly
- *   patches/head/NNN-*.js         ordered patch scripts, inlined into index.html
+ *   patches/head/<area>/<name>.js  patch scripts (kernel/ + domain folders),
+ *                                 inlined into index.html in TEMPLATE order —
+ *                                 the template is the manifest, not filenames
  *   patches/index.template.html   page skeleton with {{patches/...}}/{{VERSION}}
  *   patches/sw.template.js        service worker; cache manifest generated
  *
@@ -115,7 +117,7 @@ for (const f of collectFiles(join(root, 'upstream', 'translations'), join(root, 
 }
 copyIn(join(root, 'patches', 'custom', 'core.chunk.js'), 'core.chunk.js');
 
-// Pinned WebTorrent (loaded by patch 031; sw.min.js is importScripts'd by the
+// Pinned WebTorrent (loaded by patches/head/torrents/webtorrent-streaming.js; sw.min.js is importScripts'd by the
 // app service worker for its streaming server). Explicit copies, not a
 // collectFiles sweep — the vendor dir's README.md is documentation, not a
 // shipped asset.
@@ -150,7 +152,7 @@ for (const defFile of readdirSync(editsDir).filter(n => n.endsWith('.json')).sor
 
 // ---------- 4. index.html ----------
 let html = toLf(readFileSync(join(root, 'patches', 'index.template.html'), 'utf8'));
-const placeholderRe = /\{\{patches\/(head\/[0-9a-z-]+\.js)\}\}/g;
+const placeholderRe = /\{\{patches\/(head\/[0-9a-z][0-9a-z-]*(?:\/[0-9a-z][0-9a-z-]*)*\.js)\}\}/g;
 const referenced = new Set();
 let ph;
 while ((ph = placeholderRe.exec(html)) !== null) {
@@ -161,13 +163,14 @@ while ((ph = placeholderRe.exec(html)) !== null) {
   html = html.replace(ph[0], () => body);
 }
 // Reverse check: a patch file the template forgot would silently never ship.
-for (const name of readdirSync(join(root, 'patches', 'head')).filter(n => n.endsWith('.js'))) {
-  if (!referenced.has(`head/${name}`)) die(`patches/head/${name} exists but the template never inlines it`);
+for (const f of collectFiles(join(root, 'patches', 'head'), join(root, 'patches'))) {
+  if (!f.rel.endsWith('.js')) continue;
+  if (!referenced.has(f.rel)) die(`patches/${f.rel} exists but the template never inlines it`);
 }
 if (/\{\{patches\//.test(html)) die('unresolved {{patches/...}} placeholder in template');
 html = html.replaceAll('{{VERSION}}', VERSION);
 const stampRe = /(__BUILD_COMMIT__ = ')[a-f0-9]+(')/;
-if (!stampRe.test(html)) die('__BUILD_COMMIT__ stamp not found — patch 004 no longer matches the build stamp pattern');
+if (!stampRe.test(html)) die('__BUILD_COMMIT__ stamp not found — platform/sw-register.js no longer matches the build stamp pattern');
 html = html.replace(stampRe, `$1${COMMIT}$2`);
 if (!(new RegExp(`__BUILD_COMMIT__ = '${COMMIT}'`)).test(html)) die('__BUILD_COMMIT__ stamp failed to land in index.html');
 writeFileSync(join(APP, 'index.html'), html);
