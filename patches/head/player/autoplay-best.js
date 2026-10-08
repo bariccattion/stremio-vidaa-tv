@@ -18,9 +18,12 @@
         return RT.store.getBool(LS_KEY, false);
     }
 
+    // Scoring ladder: deliberately loose indexOf matching (unknown labels
+    // score as 720p-ish, partial markers still count) — do not "fix" it to
+    // the stricter word-boundary predicates in kernel/streams.js.
     function scoreStream(stream) {
         var score = 0;
-        var name = ((stream.title || '') + ' ' + (stream.name || '') + ' ' + (stream.description || '')).toLowerCase();
+        var name = window.__vidaaStreams.text(stream);
 
         // Resolution scoring
         if (name.indexOf('2160p') !== -1 || name.indexOf('4k') !== -1 || name.indexOf('uhd') !== -1) score += 4;
@@ -41,10 +44,8 @@
         if (name.indexOf('x264') !== -1 || name.indexOf('avc') !== -1) score += 0.5;
 
         // File size scoring — parse from name
-        var sizeMatch = name.match(/([\d.]+)\s*(gb|mb)/i);
-        if (sizeMatch) {
-            var sizeGB = parseFloat(sizeMatch[1]);
-            if (sizeMatch[2].toLowerCase() === 'mb') sizeGB = sizeGB / 1024;
+        var sizeGB = window.__vidaaStreams.parseSizeGB(name);
+        if (sizeGB !== null) {
             // Sweet spot: 1.5-15GB for 1080p
             if (sizeGB >= 1.5 && sizeGB <= 15) score += 1;
             else if (sizeGB > 15 && sizeGB <= 50) score += 0.5;

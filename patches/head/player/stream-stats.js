@@ -33,26 +33,11 @@
         overlay = null;
     }
 
-    function formatBytes(bytes) {
-        if (bytes < 1024) return bytes + ' B/s';
-        if (bytes < 1048576) return Math.round(bytes / 1024) + ' KB/s';
-        return (bytes / 1048576).toFixed(1) + ' MB/s';
-    }
-
-    function formatMB(bytes) {
-        return (bytes / 1048576).toFixed(1) + ' MB';
-    }
-
-    function getBufferHealth(video) {
-        if (!video || !video.buffered || video.buffered.length === 0) return 0;
-        var current = video.currentTime;
-        for (var i = 0; i < video.buffered.length; i++) {
-            if (video.buffered.start(i) <= current && current <= video.buffered.end(i)) {
-                return video.buffered.end(i) - current;
-            }
-        }
-        return 0;
-    }
+    // Pure helpers come from kernel/streams.js; getBitrate stays local —
+    // it is stateful (keeps the last check point in this closure).
+    var formatBytes = window.__vidaaStreams.formatBps;
+    var formatMB = window.__vidaaStreams.formatMB;
+    var getBufferHealth = window.__vidaaStreams.bufferHealth;
 
     function getBitrate(totalBytes) {
         var now = Date.now();

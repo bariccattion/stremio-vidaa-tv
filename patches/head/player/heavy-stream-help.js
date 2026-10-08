@@ -28,26 +28,23 @@
 
     // ── Read the current title's streams from core and find a direct-play
     // friendly one (≤1080p, MP4/H.264, or moderate HEVC-in-MP4). Cheap label
-    // heuristic on the standard Stremio addon naming convention — same approach
-    // the existing Auto-Play scorer uses. Returns the stream object or null.
-    function streamText(s) {
-        return ((s.title || '') + ' ' + (s.name || '') + ' ' + (s.description || '')).toLowerCase();
-    }
+    // heuristic on the standard Stremio addon naming convention — the label
+    // predicates live in kernel/streams.js. Returns the stream object or null.
+    var STR = window.__vidaaStreams;
+    function streamText(s) { return STR.text(s); }
     function isHeavyStreamText(t) {
-        var is4k = /2160p|\b4k\b|uhd/.test(t);
-        var isMkv = /\.mkv\b|matroska/.test(t);
-        return is4k || isMkv;
+        return STR.is4k(t) || STR.isMkv(t);
     }
     function isDirectPlayText(t) {
         // Friendly: explicitly ≤1080p AND (mp4 or h264/avc/x264), OR an mp4 that
         // is not flagged 4K/HEVC-heavy.
         var lowRes = /1080p|720p|480p/.test(t);
-        var isMp4 = /\.mp4\b|\bmp4\b/.test(t);
-        var isH264 = /x264|h\.?264|avc/.test(t);
+        var isMp4 = STR.isMp4(t);
+        var isH264 = STR.isH264(t);
         var heavy = isHeavyStreamText(t);
         if (heavy) return false;
         if (lowRes && (isMp4 || isH264)) return true;
-        if (isMp4 && !/hevc|x265|h\.?265/.test(t)) return true; // plain MP4
+        if (isMp4 && !STR.isHevc(t)) return true; // plain MP4
         return false;
     }
 
@@ -67,8 +64,8 @@
                 if (!isDirectPlayText(t)) continue;
                 var rank = 0;
                 if (/1080p/.test(t)) rank += 3; else if (/720p/.test(t)) rank += 2; else rank += 1;
-                if (/\.mp4\b|\bmp4\b/.test(t)) rank += 1;
-                if (/x264|h\.?264|avc/.test(t)) rank += 1;
+                if (STR.isMp4(t)) rank += 1;
+                if (STR.isH264(t)) rank += 1;
                 if (rank > bestRank) { bestRank = rank; best = s; }
             }
             return best;
