@@ -11,7 +11,7 @@
 //
 // Seam: bootApp() waits on the kernel boot signal (window.__VIDAA_CORE_READY__).
 // The settings-screen wiring is asserted at the SEAM INTERFACE —
-// window.__vidaaSettingsRows — not by rendering the screen: Theater 1.9.2
+// window.__vidaaSettingsRows — not by rendering the screen: Theater (1.9.2 and 1.10.0)
 // forces a login for anonymous profiles (every #/settings navigation redirects
 // to #/login), and the app holds its own core reference from boot, so neither
 // a window.core mock nor a post-boot proxy can drive the real settings UI.
@@ -239,7 +239,7 @@ test.describe('False-Offline healing and honest status', () => {
 
   // The SERVER row's page-health evidence (f.online() ||
   // __SERVER_HEALTH__.status === "online") cannot be asserted by rendering
-  // the settings screen — Theater 1.9.2 walls it behind a mandatory login
+  // the settings screen — Theater (1.9.2 and 1.10.0) walls it behind a mandatory login
   // (see the file header). Its behavioral halves are covered here: the heal
   // tests prove the page-level probe flips online exactly when the core's
   // one-shot check would have stuck Offline; the chunk edit itself is

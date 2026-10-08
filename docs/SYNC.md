@@ -5,9 +5,10 @@ source fork. Keeping that separation mechanical is the whole point of the layout
 
 ```
 upstream/                  replaceable Stremio artifacts (never hand-edit)
-  theater-1.9.2/           the compiled TV frontend (chunks, assets)
+  theater-1.10.0/          the compiled TV frontend (chunks, assets; dir is
+                           recorded in UPSTREAM.lock.json, build reads it from there)
   core-web/<version>/      stremio-core-web engine (v5-worker.js + wasm)
-  translations/            47 per-language translation chunks
+  translations/            50 per-language translation chunks
 UPSTREAM.lock.json         version + source URL + SHA-256 of every upstream file
 patches/                   everything that makes this a VIDAA build
   head/                    patch scripts, inlined into index.html at build
@@ -26,7 +27,7 @@ patches/                   everything that makes this a VIDAA build
     platform/ player/ subtitles/ audio/ torrents/ library/ settings/
     diagnostics/           feature patches by domain; index.template.html
                            (not filenames) fixes the inline order
-  chunk-edits/*.json       surgical {find, replace} ops on 3 pristine chunks
+  chunk-edits/*.json       surgical {find, replace} ops on pristine chunks
   custom/core.chunk.js     the worker-factory shim that swaps in the v5 engine
   index.template.html      page skeleton ({{VERSION}}, {{COMMIT}} stamped at build)
   sw.template.js           service worker (cache manifest generated at build)
@@ -54,9 +55,9 @@ components are:
 | Component | Source | Current |
 |---|---|---|
 | Engine | `@stremio/stremio-core-web` on npm (MIT) | 0.64.1 |
-| Translations | [Stremio/stremio-translations](https://github.com/Stremio/stremio-translations) | master, synced 2026-10-07 |
+| Translations | [Stremio/stremio-translations](https://github.com/Stremio/stremio-translations) | master, synced 2026-10-08 |
 | WebTorrent trackers | [ngosang/trackerslist](https://github.com/ngosang/trackerslist) websocket list | master, synced 2026-10-07 |
-| TV frontend | Stremio CDN (`wn7lso8ghdka.stremio.com/hisense/<ver>/`, current version only) · dumps at [ananjaser1211/stremio-hisense-tvos](https://github.com/ananjaser1211/stremio-hisense-tvos) | frozen at 1.9.2 (dump `eafda4a`); a 1.10.0 dump exists (`d40ebd1`) but no sync path |
+| TV frontend | Stremio CDN (`wn7lso8ghdka.stremio.com/hisense/<ver>/`, current version only) · dumps at [ananjaser1211/stremio-hisense-tvos](https://github.com/ananjaser1211/stremio-hisense-tvos) | **1.10.0** (re-baselined 2026-10-08; still no sync path — see Provenance) |
 
 ## Sync procedure
 
@@ -76,7 +77,7 @@ npm run sync-trackers
 node scripts/build.mjs --update-lock
 
 # 5. Verify
-npx playwright test            # 143 tests against the freshly built app/
+npx playwright test            # 142 tests against the freshly built app/
 node scripts/probe-core.mjs    # boots the site headlessly; confirms the WASM core initializes
 node scripts/probe-server.mjs  # boots with a mock streaming server; confirms ?server= sync,
                                 # StreamingServer.Reload, and the core's server client (all
@@ -145,7 +146,7 @@ works, and pin that in `UPSTREAM.lock.json`. Git history holds every predecessor
 
 ## Provenance
 
-- **Theater 1.9.2 chunks**: the UI is Stremio's official Hisense/VIDAA TV app,
+- **Theater chunks**: the UI is Stremio's official Hisense/VIDAA TV app,
   distributed compiled-only from Stremio's CDN
   (`https://wn7lso8ghdka.stremio.com/hisense/<version>/`; no open-source repo —
   Stremio/stremio-web is a different, mouse-first app, and the CDN keeps only
@@ -164,12 +165,29 @@ works, and pin that in `UPSTREAM.lock.json`. Git history holds every predecessor
      credited the dump repo, then dropped the credit 15 minutes later
      (`54dd1b4`).
   3. This repo inherited that v6 tree and restructured it into
-     `upstream/theater-1.9.2/` (restructure commit `9e2ea4a`).
-  Pristine copies live in `upstream/theater-1.9.2/`; the three modified chunks
-  (player, video, settings) are stored pristine there too, with the VIDAA edits
-  expressed as data in `patches/chunk-edits/`. A 1.10.0 dump exists (commit
-  `d40ebd1`, 2026-07-09) — adopting it would be a manual re-baseline, not a
-  sync.
+     `upstream/theater-1.9.2/` (restructure commit `9e2ea4a`), restoring the
+     modified chunks to pristine and expressing the VIDAA edits as data in
+     `patches/chunk-edits/`.
+  4. **2026-10-08 re-baseline to 1.10.0**: the v6 lineage had fork mods baked
+     into six upstream files (main.js, runtime.js, search/service/video chunks
+     and the dead `1477.chunk.js` — referenced by nothing, dropped). The
+     re-baseline took the 1.10.0 build PRISTINE from the live CDN (files
+     Last-Modified 2025-12-05), cross-checked every file byte-identical
+     against the community dump commit `6b44b10` ("Re-sync Hisense WebOS
+     1.10.0 app dump"), and moved every surviving fork mod into
+     `patches/chunk-edits/` (main, search, service, video JSONs) so upstream/
+     is now fully pristine. The `runtime.js` `?v=5` cache-bust was dropped
+     (the service worker normalizes query strings). Translation wrappers were
+     re-baselined the same day — module ids changed wholesale in 1.10.0 and
+     sk-SK/tl-TM/ur-PK were added, so the 1.9.2-era wrappers would never have
+     loaded — then values re-synced from stremio-translations master.
+  There is still no sync procedure for the UI: when Stremio ships 1.10.1,
+  adopting it is another manual re-baseline (download from the CDN while it
+  is live, cross-check against a fresh dump in the community repo, re-anchor
+  every `find` in `patches/chunk-edits/`, re-anchor the two module ids in
+  `patches/custom/core.chunk.js` (blob-worker-loader and worker-factory —
+  find them via `n.e(<coreChunkId>)` in the new main.js), re-baseline the
+  translation wrappers, then run the full verify ladder).
 - **Engine**: `@stremio/stremio-core-web` from npm; `sync-core.mjs` bundles the
   package's CommonJS worker into a self-contained classic worker with esbuild.
 - **Deployment**: GitHub Actions builds `app/` and force-pushes it to the

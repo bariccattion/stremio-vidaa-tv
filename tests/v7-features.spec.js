@@ -10,16 +10,20 @@ const {
   bootApp, installMockCore, installFakeVidaa, installFakeVideoFactory,
 } = require('./helpers');
 
+// The site version the build stamps (?v=N, badge, SW cache name) — read from
+// package.json so a bump doesn't break these assertions.
+const SITE_VERSION = String(require('../package.json').siteVersion);
+
 test.describe('Index HTML structure', () => {
   test('page loads with correct title', async ({ page }) => {
     await bootApp(page, { core: 'none' });
     await expect(page).toHaveTitle('Stremio - Freedom to Stream');
   });
 
-  test('version indicator shows v8', async ({ page }) => {
+  test('version indicator shows the site version', async ({ page }) => {
     await bootApp(page, { core: 'none' });
     const version = page.locator('#patch-version');
-    await expect(version).toHaveText('v8');
+    await expect(version).toHaveText('v' + SITE_VERSION);
   });
 
   test('root div exists', async ({ page }) => {
@@ -27,13 +31,13 @@ test.describe('Index HTML structure', () => {
     await expect(page.locator('#root')).toBeAttached();
   });
 
-  test('scripts load with cache-bust v8 param', async ({ page }) => {
+  test('scripts load with the cache-bust version param', async ({ page }) => {
     await bootApp(page, { core: 'none' });
     const scripts = await page.locator('script[src]').all();
     const srcs = await Promise.all(scripts.map(s => s.getAttribute('src')));
     const mainScripts = srcs.filter(s => s && (s.includes('runtime') || s.includes('main.js') || s.includes('service') || s.includes('webOSTV')));
     for (const src of mainScripts) {
-      expect(src).toContain('?v=8');
+      expect(src).toContain('?v=' + SITE_VERSION);
     }
   });
 });

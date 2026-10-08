@@ -1,11 +1,22 @@
 {
   "chunk": "main.js",
-  "description": "Surgical edits to the pristine Theater 1.9.2 main.js. Derived from git baseline b202cd0.",
+  "description": "Surgical edits to the pristine Theater 1.10.0 main.js. Re-anchored from the 1.9.2 baseline (b202cd0 + fork mods identified during the 2026-10 re-baseline) onto the 1.10.0 minified output.",
   "ops": [
     {
       "note": "Shared TextField: suppress TV-keyboard autocompletion/autocorrect (the VIDAA keyboard was injecting suggestion/mask content into URL and search fields).",
-      "find": "var Xt = (0, r.vs)(\"<input type=text>\");",
-      "replace": "var Xt = (0, r.vs)(\"<input type=text autocomplete=off autocorrect=off autocapitalize=off>\");"
+      "find": "var Xt=(0,r.vs)(\"<input type=text>\");",
+      "replace": "var Xt=(0,r.vs)(\"<input type=text autocomplete=off autocorrect=off autocapitalize=off>\");"
+    },
+    {
+      "note": "Shared TextField: VIDAA keyboard fix (fork mod from 1.9.2). The TV's virtual keyboard sets input.value directly without firing events, so Enter/blur/input are wired to the app's onSubmit/onChange and a 500ms poll mirrors value changes (cleared when the input detaches).",
+      "find": "(u=Xt()).addEventListener(\"submit\",c),u.addEventListener(\"change\",s),u.$$input=l,u.$$click=a,",
+      "replace": "(u=Xt()).addEventListener(\"submit\",c),u.addEventListener(\"change\",s),u.addEventListener(\"keydown\",function(t){if(\"Enter\"===t.key||13===t.keyCode||\"Select\"===t.key){var n=t.target.value;e.onSubmit&&e.onSubmit(n),e.onChange&&e.onChange(n)}}),u.addEventListener(\"blur\",function(){var n=u.value;if(n&&n.length>0){e.onSubmit&&e.onSubmit(n);e.onChange&&e.onChange(n)}}),u.addEventListener(\"input\",function(){var n=u.value;if(n&&n.length>0){e.onChange&&e.onChange(n)}}),function(){var _lastVal=\"\",_poll=setInterval(function(){if(!u||!u.parentNode){clearInterval(_poll);return}var v=u.value||\"\";if(v!==_lastVal){_lastVal=v;if(v.length>0){e.onChange&&e.onChange(v)}else{e.onChange&&e.onChange(\"\")}}},500)}(),u.$$input=l,u.$$click=a,"
+    },
+    {
+      "note": "Nav: /discover/channel -> /discover/tv and focus matches the 'tv' catalog type too (fork mod from 1.9.2; core-web 0.64.x serves the TV channel catalog as type 'tv').",
+      "find": "path:\"/discover/channel\",name:\"channels\",label:\"STREMIO_TV_NAV_CHANNELS\",isFocused:e=>\"channel\"===e.type",
+      "replace": "path:\"/discover/tv\",name:\"channels\",label:\"STREMIO_TV_NAV_CHANNELS\",isFocused:e=>\"tv\"===e.type||\"channel\"===e.type"
     }
-  ]
+  ],
+  "fixTrailingNewline": "ensure"
 }

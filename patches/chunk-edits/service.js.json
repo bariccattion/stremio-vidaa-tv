@@ -1,0 +1,12 @@
+{
+  "chunk": "service.js",
+  "description": "Surgical edits to the pristine Theater 1.10.0 service.js. Fork mod ported from the 1.9.2 baseline during the 2026-10 re-baseline (previously baked into upstream/theater-1.9.2/service.js).",
+  "ops": [
+    {
+      "note": "Heartbeat poller: ping the app-configured streaming server (kernel/server-url.js __STREMIO_SERVER_URL__) instead of hardcoded 127.0.0.1, and stop trying to restart the companion service after 3 consecutive failures (vanilla retried forever — on TVs with no companion service that loops forever).",
+      "find": "o=()=>{(window.location.hash||\"\").startsWith(\"#/player/\")?setTimeout(o,1e4):fetch(\"http://127.0.0.1:11470/heartbeat\").then((t=>t.text())).then((t=>{setTimeout(o,5e3)})).catch((t=>{if(\"Failed to fetch\"===(t||{}).message)return console.log(\"service heartbeat - failed, restarting\"),void n();console.log(\"service heartbeat - unknown error, continuing\",(t||{}).message),setTimeout(o,5e3)}))};n()",
+      "replace": "o=(()=>{var _hbFails=0;return()=>{(window.location.hash||\"\").startsWith(\"#/player/\")?setTimeout(o,1e4):fetch((self.window&&window.__STREMIO_SERVER_URL__||\"http://127.0.0.1:11470\")+\"/heartbeat\").then((t=>t.text())).then((t=>{_hbFails=0,setTimeout(o,5e3)})).catch((t=>{if(\"Failed to fetch\"===(t||{}).message){if(++_hbFails>3)return console.log(\"service heartbeat - max retries reached, stopping\"),void 0;return console.log(\"service heartbeat - failed, restarting\"),void n()}console.log(\"service heartbeat - unknown error, continuing\",(t||{}).message),setTimeout(o,5e3)}))}})();n()"
+    }
+  ],
+  "fixTrailingNewline": "ensure"
+}

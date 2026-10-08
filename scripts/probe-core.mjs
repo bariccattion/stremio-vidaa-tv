@@ -6,7 +6,8 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
-const PORT = 8123;
+// TEST_PORT override: Windows hosts can have 8123 inside a reserved range.
+const PORT = Number(process.env.TEST_PORT) || 8123;
 const serveJs = createRequire(import.meta.url).resolve('serve/build/main.js');
 // Spawn serve directly (no npx shell wrapper) so .kill() actually stops it on Windows.
 const serve = spawn(process.execPath, [serveJs, 'app', '-l', String(PORT), '--no-clipboard'], { cwd: root, stdio: 'ignore' });

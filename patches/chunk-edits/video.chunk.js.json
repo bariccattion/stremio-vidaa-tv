@@ -1,16 +1,31 @@
 {
   "chunk": "video.chunk.js",
-  "description": "Surgical edits turning the pristine Theater 1.9.2 video.chunk.js into the VIDAA build. Derived from git baseline 8775223.",
+  "description": "Surgical edits turning the pristine Theater 1.10.0 video.chunk.js into the VIDAA build. Re-anchored from the 1.9.2 baseline (8775223 + fork mods) onto the 1.10.0 minified output. 1.10.0 absorbed the old dead 1477.chunk.js player engine into this chunk.",
   "ops": [
     {
-      "note": "forceTranscoding now also honors the window.__FORCE_TRANSCODE__ flag set by the Blue remote key / patch layer.",
-      "find": "                                            videoCodecs: c,\n                                            audioCodecs: d,\n                                            maxAudioChannels: h\n                                        });\n                                    return (n.forceTranscoding ? Promise.resolve(!1) : t.canPlayStream({\n                                        url: r\n                                    }, f)).catch((function(e) {\n                                        return console.warn(\"Media probe error\", e), !1",
-      "replace": "                                            videoCodecs: c,\n                                            audioCodecs: d,\n                                            maxAudioChannels: h\n                                        }),\n                                        p = !!(n.forceTranscoding || window.__FORCE_TRANSCODE__);\n                                    return (p ? (window.__FORCE_TRANSCODE__ = !1, Promise.resolve(!1)) : t.canPlayStream({\n                                        url: r\n                                    }, f)).catch((function(e) {\n                                        return console.warn(\"Media probe error\", e), !1"
+      "note": "Engine 'load' event: skip re-initializing when the stream URL did not change (fork mod from 1.9.2 — the vanilla dead check (C=t.stream)!==t.stream never fired, so repeated loads re-buffered).",
+      "find": "if((C=t.stream)!==t.stream)return;U(\"buffering\")",
+      "replace": "var _prevStream=C;C=t.stream;if(_prevStream&&_prevStream.url===C.url)return;U(\"buffering\")"
     },
     {
-      "note": "Propagates the forced-transcode decision into the server URL params.",
-      "find": "                                            l = new URLSearchParams([\n                                                [\"mediaURL\", r]\n                                            ]);\n                                        return n.forceTranscoding && l.set(\"forceTranscoding\", \"1\"), c.forEach((function(e) {\n                                            l.append(\"videoCodecs\", e)\n                                        })), d.forEach((function(e) {\n                                            l.append(\"audioCodecs\", e)",
-      "replace": "                                            l = new URLSearchParams([\n                                                [\"mediaURL\", r]\n                                            ]);\n                                        return p && l.set(\"forceTranscoding\", \"1\"), c.forEach((function(e) {\n                                            l.append(\"videoCodecs\", e)\n                                        })), d.forEach((function(e) {\n                                            l.append(\"audioCodecs\", e)"
+      "note": "forceTranscoding now also honors the window.__FORCE_TRANSCODE__ flag set by the Blue remote key / patch layer.",
+      "find": "});return(n.forceTranscoding?Promise.resolve(!1):t.canPlayStream({url:r},f)).catch(",
+      "replace": "});var _vft=!!(n.forceTranscoding||window.__FORCE_TRANSCODE__);return(_vft?(window.__FORCE_TRANSCODE__=!1,Promise.resolve(!1)):t.canPlayStream({url:r},f)).catch("
+    },
+    {
+      "note": "Propagates the forced-transcode decision into the server URL params (reads _vft declared by the previous op; this site is a .then closure inside the same function).",
+      "find": "l=new URLSearchParams([[\"mediaURL\",r]]);return n.forceTranscoding&&l.set(\"forceTranscoding\",\"1\"),",
+      "replace": "l=new URLSearchParams([[\"mediaURL\",r]]);return _vft&&l.set(\"forceTranscoding\",\"1\"),"
+    },
+    {
+      "note": "Server /tracks/ listing (module 2152): use the app-configured server URL (kernel/server-url.js) instead of hardcoded 127.0.0.1, with a 10s abort timeout (fork mod from 1.9.2 module 4775 — vanilla hangs forever when no local service exists).",
+      "find": "e.exports=function(e,t){fetch(\"http://127.0.0.1:11470/tracks/\"+encodeURIComponent(e)).then((function(e){return e.json()})).then((function(e){var r=e.filter((function(e){return\"audio\"===(e||{}).type})),n=e.filter((function(e){return\"text\"===(e||{}).type}));t({audio:r,subs:n})})).catch((function(e){console.error(e),t(!1)}))}",
+      "replace": "e.exports=function(e,t){var _ctrl=\"undefined\"!=typeof AbortController?new AbortController:null,_timer=setTimeout((function(){_ctrl&&_ctrl.abort()}),1e4);fetch((window.__STREMIO_SERVER_URL__||\"http://127.0.0.1:11470\")+\"/tracks/\"+encodeURIComponent(e),_ctrl?{signal:_ctrl.signal}:{}).then((function(e){return e.json()})).then((function(e){clearTimeout(_timer);var r=e.filter((function(e){return\"audio\"===(e||{}).type})),n=e.filter((function(e){return\"text\"===(e||{}).type}));t({audio:r,subs:n})})).catch((function(e){clearTimeout(_timer);console.error(\"[tracks] fetch failed:\",e),t(!1)}))}"
+    },
+    {
+      "note": "HTML5 engine canPlayStream: probe even when behaviorHints.notWebReady is set (fork mod from 1.9.2 — with a streaming server those streams are playable via transcode, so refusing to probe breaks server-assisted playback).",
+      "find": "d.canPlayStream=function(e){return!e||e.behaviorHints&&e.behaviorHints.notWebReady?Promise.resolve(!1):u(e)",
+      "replace": "d.canPlayStream=function(e){return!e?Promise.resolve(!1):u(e)"
     }
   ],
   "fixTrailingNewline": "ensure"

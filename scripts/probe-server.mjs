@@ -9,8 +9,10 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
-const SITE_PORT = 8131;
-const MOCK_PORT = 8124;
+// TEST_PORT/MOCK_PORT overrides: Windows hosts can have these inside a
+// reserved port range (Hyper-V/WSL exclusions) where binding fails.
+const SITE_PORT = Number(process.env.TEST_PORT) || 8131;
+const MOCK_PORT = Number(process.env.MOCK_PORT) || 8124;
 
 const requests = [];
 // Shapes per the real stremio-server v3 API: /settings options is a SEQUENCE,

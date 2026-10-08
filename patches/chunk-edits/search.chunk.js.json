@@ -1,0 +1,12 @@
+{
+  "chunk": "search.chunk.js",
+  "description": "Surgical edits to the pristine Theater 1.10.0 search.chunk.js. Fork mod ported from the 1.9.2 baseline during the 2026-10 re-baseline (previously baked into upstream/theater-1.9.2/search.chunk.js).",
+  "ops": [
+    {
+      "note": "Search input mirror: poll the (possibly virtual) keyboard's value changes into the app's query setter P() — the VIDAA keyboard sets input.value without firing the events the app listens to. Cleared on unmount via the same lifecycle the app uses (a.Ki).",
+      "find": "e&&(v.load(e),v.loadCatalogs(0))})),(0,a.Ki)((()=>{v.unload()}))",
+      "replace": "e&&(v.load(e),v.loadCatalogs(0))})),function(){var _pv=\"\",_pi=setInterval(function(){try{var el=document.querySelector('input[type=\"text\"]')||document.querySelector('input[placeholder]')||document.querySelector('input');if(!el)return;var cv=el.value||\"\";if(cv!==_pv){_pv=cv;if(cv.length>0){P(cv)}else if(_pv===\"\"){P(\"\")}}}catch(e){}},100);(0,a.Ki)((function(){clearInterval(_pi)}))}(),(0,a.Ki)((()=>{v.unload()}))"
+    }
+  ],
+  "fixTrailingNewline": "ensure"
+}

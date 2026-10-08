@@ -5,7 +5,7 @@
 A Stremio web app rebuilt to run in the limited browser of Hisense/VIDAA smart
 TVs and projectors, deployed as a static site on GitHub Pages. It is not a
 source fork of Stremio: `upstream/` holds pristine, replaceable Stremio
-artifacts (Theater 1.9.2 frontend, stremio-core-web WASM engine, translations,
+artifacts (Theater 1.10.0 frontend, stremio-core-web WASM engine, translations,
 vendored WebTorrent), and `scripts/build.mjs` assembles them plus the patch
 layer into `app/` (gitignored build output). The actual source of this project
 is `patches/`.

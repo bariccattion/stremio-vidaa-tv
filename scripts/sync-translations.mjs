@@ -5,7 +5,7 @@
  * Each upstream/translations/translationsN.chunk.js is a webpack chunk:
  *   (self.webpackChunkstremio_theater ||= []).push([[chunkId], { moduleId: E => { E.exports = JSON.parse('...') } }]);
  *
- * The language table lives in main.js module 9047: './<lang>.json': [moduleId, chunkId].
+ * The language table lives in the Theater main.js: './<lang>.json': [moduleId, chunkId].
  * This script:
  *   1. parses every existing chunk (executing it against a fake webpack runtime),
  *   2. maps each chunk to its language via the main.js table,
@@ -33,8 +33,14 @@ const die = (msg) => { console.error(`sync-translations: ${msg}`); process.exit(
 const LANG_RENAMES = { 'ca-CA': 'ca-ES' };
 const TRANSLATIONS_REPO = 'https://raw.githubusercontent.com/Stremio/stremio-translations/master';
 
-// ---------- 1. Language table from main.js (module 9047) ----------
-const mainJs = readFileSync(join(root, 'upstream', 'theater-1.9.2', 'main.js'), 'utf8');
+// ---------- 1. Language table from the current Theater main.js ----------
+// (chunk ids shifted wholesale between Theater builds, so the table is found
+// by its "./ar-AR.json" anchor, never by module id)
+const lockPath = join(root, 'UPSTREAM.lock.json');
+const lock = JSON.parse(readFileSync(lockPath, 'utf8'));
+const theaterDir = lock.components?.theater?.dir;
+if (!theaterDir) { console.error('sync-translations: UPSTREAM.lock.json has no theater dir'); process.exit(1); }
+const mainJs = readFileSync(join(root, theaterDir, 'main.js'), 'utf8');
 const langTable = {}; // moduleId -> lang
 {
   const anchor = mainJs.indexOf('"./ar-AR.json"');

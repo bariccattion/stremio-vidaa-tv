@@ -3,7 +3,8 @@
  * Assemble the deployable site (app/) from replaceable upstream artifacts plus
  * the VIDAA patch layer:
  *
- *   upstream/theater-1.9.2/*      pristine Theater 1.9.2 build (never hand-edited)
+ *   upstream/theater-<ver>/*       pristine Theater build (never hand-edited;
+ *                                   dir resolved from UPSTREAM.lock.json)
  *   upstream/core-web/<ver>/*     stremio-core-web worker + wasm (from npm)
  *   upstream/translations/*       translation chunks
  *   upstream/vendor/webtorrent/   pinned webtorrent 3.0.21 bundles (see that
@@ -98,6 +99,10 @@ const coreDirs = readdirSync(join(root, 'upstream', 'core-web'));
 const coreVersion = lock.components?.['core-web']?.version
   ?? (coreDirs.length === 1 ? coreDirs[0] : die(`multiple upstream/core-web/* dirs and no lock entry: ${coreDirs.join(', ')}`));
 
+// Which Theater build are we shipping? (dir recorded by the last sync/re-baseline)
+const theaterDir = lock.components?.theater?.dir || die('UPSTREAM.lock.json has no theater dir');
+if (!existsSync(join(root, theaterDir))) die(`theater dir ${theaterDir} does not exist`);
+
 // ---------- 2. Assemble app/ ----------
 rmSync(APP, { recursive: true, force: true });
 mkdirSync(APP, { recursive: true });
@@ -109,7 +114,7 @@ const copyIn = (abs, appRel) => {
   return dest;
 };
 
-for (const f of collectFiles(join(root, 'upstream', 'theater-1.9.2'), join(root, 'upstream', 'theater-1.9.2'))) copyIn(f.abs, f.rel);
+for (const f of collectFiles(join(root, theaterDir), join(root, theaterDir))) copyIn(f.abs, f.rel);
 for (const f of collectFiles(join(root, 'upstream', 'translations'), join(root, 'upstream', 'translations'))) copyIn(f.abs, f.rel);
 {
   const coreDir = join(root, 'upstream', 'core-web', coreVersion);
