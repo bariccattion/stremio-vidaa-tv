@@ -10,23 +10,20 @@
 // actually opened is the browser tab being backgrounded
 // (visibilitychange->hidden / blur / pagehide). When no such signal arrives we
 // MUST report failure and never corrupt watch state.
+//
+// Seam: bootApp() (helpers.js) — installFakeNative only CAPTURES, and
+// simulateAppBackgrounded uses the real visibilitychange events (the one
+// sanctioned simulation). Player-route tests boot with core:'mock' so the
+// anonymous SPA's login redirect never fights the route-gated key handlers.
 const { test, expect } = require('@playwright/test');
+const {
+  bootApp, installFakeNative, installFakeVideoFactory,
+} = require('./helpers');
 
 test.setTimeout(60000);
 
-// Helper: install a fake omi_platform BEFORE page scripts run, recording every
-// message sent. By default it does NOT simulate the app backgrounding (because
-// real VIDAA firmware ignores these messages — nothing happens).
-function installFakeNative(page, { capture = '__sentMessages' } = {}) {
-  return page.addInitScript((captureKey) => {
-    window[captureKey] = [];
-    window.omi_platform = {
-      sendPlatformMessage: function (msg) {
-        try { window[captureKey].push(JSON.parse(msg)); } catch (e) { window[captureKey].push(msg); }
-      }
-    };
-  }, capture);
-}
+const parsedDispatches = (page) =>
+  page.evaluate(() => (window.__mockDispatchLog || []).map((e) => JSON.parse(e)));
 
 // ==========================================================================
 // H1 — Launcher reports FAILURE when no backgrounding signal occurs
@@ -34,8 +31,7 @@ function installFakeNative(page, { capture = '__sentMessages' } = {}) {
 test.describe('H1 — launcher honesty (verification required)', () => {
   test('returns a Promise', async ({ page }) => {
     await installFakeNative(page);
-    await page.goto('/');
-    await page.waitForTimeout(2500);
+    await bootApp(page, { core: 'none' });
     const isPromise = await page.evaluate(() => {
       const r = window.__launchNativePlayer('http://stream.test/video.mkv', { verifyTimeoutMs: 50 });
       return r && typeof r.then === 'function';
@@ -45,8 +41,7 @@ test.describe('H1 — launcher honesty (verification required)', () => {
 
   test('resolves FALSE when the app never backgrounds (fire-and-forget, no ack)', async ({ page }) => {
     await installFakeNative(page);
-    await page.goto('/#/player/h1-nofail');
-    await page.waitForTimeout(2500);
+    await bootApp(page, { core: 'mock', url: '/#/player/h1-nofail' });
     const result = await page.evaluate(async () => {
       // No visibilitychange / blur / pagehide will fire — simulating real VIDAA
       // where the message is silently ignored and the browser stays foreground.
@@ -57,8 +52,7 @@ test.describe('H1 — launcher honesty (verification required)', () => {
 
   test('resolves TRUE when a backgrounding signal (visibilitychange->hidden) arrives', async ({ page }) => {
     await installFakeNative(page);
-    await page.goto('/#/player/h1-ok');
-    await page.waitForTimeout(2500);
+    await bootApp(page, { core: 'mock', url: '/#/player/h1-ok' });
     const result = await page.evaluate(async () => {
       const p = window.__launchNativePlayer('http://stream.test/video.mkv', { verifyTimeoutMs: 2000 });
       // Simulate the native app taking the foreground shortly after.
@@ -75,8 +69,7 @@ test.describe('H1 — launcher honesty (verification required)', () => {
   });
 
   test('resolves FALSE when omi_platform is absent', async ({ page }) => {
-    await page.goto('/#/player/h1-noapi');
-    await page.waitForTimeout(2500);
+    await bootApp(page, { core: 'mock', url: '/#/player/h1-noapi' });
     const result = await page.evaluate(async () => {
       try { delete window.omi_platform; } catch (e) {}
       return await window.__launchNativePlayer('http://stream.test/video.mkv', { verifyTimeoutMs: 100 });
@@ -86,8 +79,7 @@ test.describe('H1 — launcher honesty (verification required)', () => {
 
   test('still dispatches the platform messages (best-effort send) even though result reflects verification', async ({ page }) => {
     await installFakeNative(page);
-    await page.goto('/#/player/h1-send');
-    await page.waitForTimeout(2500);
+    await bootApp(page, { core: 'mock', url: '/#/player/h1-send' });
     const sent = await page.evaluate(async () => {
       await window.__launchNativePlayer('http://stream.test/video.mkv', { verifyTimeoutMs: 100 });
       return window.__sentMessages || [];
@@ -105,8 +97,9 @@ test.describe('H1 — launcher honesty (verification required)', () => {
 test.describe('H2 — single consolidated launcher', () => {
   test('launcher identity is stable after all timers settle (no blind 10s overwrite)', async ({ page }) => {
     await installFakeNative(page);
-    await page.goto('/');
-    // Wait past the historical 10s blind-overwrite window.
+    await bootApp(page, { core: 'none' });
+    // Wait past the historical 10s blind-overwrite window — the timer IS the
+    // behavior under test, so this stays a real (bounded) window.
     await page.waitForTimeout(11500);
     const stable = await page.evaluate(async () => {
       const before = window.__launchNativePlayer;
@@ -122,27 +115,19 @@ test.describe('H2 — single consolidated launcher', () => {
 // H3 — Mark-as-watched only on VERIFIED launch; never corrupt resume point
 // ==========================================================================
 test.describe('H3 — no fake-progress corruption', () => {
+  function h3Core(metaId) {
+    return { player: { metaItem: { id: metaId }, video: { id: metaId + ':1:1' } } };
+  }
+
   test('does NOT dispatch any SetProp currentTime (fake 90% progress removed)', async ({ page }) => {
-    await page.addInitScript(() => {
-      window.__coreDispatches = [];
-      window.__mockCore = {
-        dispatch: function (action, ctx) { window.__coreDispatches.push({ action, ctx }); },
-        getState: function () {
-          return Promise.resolve({ metaItem: { id: 'tt123' }, video: { id: 'tt123:1:1' } });
-        }
-      };
-      Object.defineProperty(window, 'core', {
-        get: function () { return window.__mockCore; },
-        set: function () {},
-        configurable: true
-      });
-    });
     await installFakeNative(page);
     // Enable the watched toggle so we exercise the path that USED to corrupt progress.
-    await page.goto('/');
-    await page.evaluate(() => localStorage.setItem('stremio_native_handoff', 'true'));
-    await page.goto('/#/player/h3-progress');
-    await page.waitForTimeout(2500);
+    await bootApp(page, {
+      core: 'mock',
+      url: '/#/player/h3-progress',
+      mockCore: h3Core('tt123'),
+      localStorage: { stremio_native_handoff: 'true' },
+    });
     // Verified launch via visibilitychange.
     await page.evaluate(async () => {
       const p = window.__launchNativePlayer('http://stream.test/video.mkv', { verifyTimeoutMs: 2000, watchedDelayMs: 50 });
@@ -156,67 +141,46 @@ test.describe('H3 — no fake-progress corruption', () => {
       await p;
       await new Promise((r) => setTimeout(r, 300));
     });
-    const dispatches = await page.evaluate(() => window.__coreDispatches || []);
+    const dispatches = await parsedDispatches(page);
     const fakeProgress = dispatches.find((d) =>
-      d.action && d.action.args && d.action.args.args &&
-      d.action.args.args.propName === 'currentTime'
+      d.action && d.args && d.args.args &&
+      d.args.args.propName === 'currentTime'
     );
     expect(fakeProgress).toBeUndefined();
   });
 
   test('does NOT mark-as-watched when launch is NOT verified', async ({ page }) => {
-    await page.addInitScript(() => {
-      window.__coreDispatches = [];
-      window.__mockCore = {
-        dispatch: function (action, ctx) { window.__coreDispatches.push({ action, ctx }); },
-        getState: function () {
-          return Promise.resolve({ metaItem: { id: 'tt999' }, video: { id: 'tt999:1:1' } });
-        }
-      };
-      Object.defineProperty(window, 'core', {
-        get: function () { return window.__mockCore; },
-        set: function () {},
-        configurable: true
-      });
-    });
     await installFakeNative(page);
-    await page.goto('/');
-    await page.evaluate(() => localStorage.setItem('stremio_native_handoff', 'true'));
-    await page.goto('/#/player/h3-unverified');
-    await page.waitForTimeout(2500);
+    await bootApp(page, {
+      core: 'mock',
+      url: '/#/player/h3-unverified',
+      mockCore: h3Core('tt999'),
+      localStorage: { stremio_native_handoff: 'true' },
+    });
     await page.evaluate(async () => {
       // No backgrounding signal -> unverified -> no watched dispatch.
       await window.__launchNativePlayer('http://stream.test/video.mkv', { verifyTimeoutMs: 200, watchedDelayMs: 50 });
       await new Promise((r) => setTimeout(r, 300));
     });
-    const dispatches = await page.evaluate(() => window.__coreDispatches || []);
+    const dispatches = await parsedDispatches(page);
     const markWatched = dispatches.find((d) =>
-      d.action && d.action.args && d.action.args.action === 'MarkAsWatched'
+      d.action && d.args && d.args.action === 'MarkAsWatched'
     );
     expect(markWatched).toBeUndefined();
   });
 
   test('marks-as-watched ONLY when verified AND toggle is on', async ({ page }) => {
-    await page.addInitScript(() => {
-      window.__coreDispatches = [];
-      window.__mockCore = {
-        dispatch: function (action, ctx) { window.__coreDispatches.push({ action, ctx }); },
-        getState: function () {
-          return Promise.resolve({ metaItem: { id: 'ttOK' }, video: { id: 'ttOK:1:1' } });
-        }
-      };
-      Object.defineProperty(window, 'core', {
-        get: function () { return window.__mockCore; },
-        set: function () {},
-        configurable: true
-      });
-    });
     await installFakeNative(page);
-    await page.goto('/');
-    await page.evaluate(() => localStorage.setItem('stremio_native_handoff', 'true'));
-    await page.goto('/#/player/h3-verified');
-    await page.waitForTimeout(2500);
-    await page.evaluate(async () => {
+    await bootApp(page, {
+      core: 'mock',
+      url: '/#/player/h3-verified',
+      mockCore: h3Core('ttOK'),
+      localStorage: { stremio_native_handoff: 'true' },
+    });
+    // The page stays "hidden" (the verified signal), so both the app's
+    // watched-delay timer AND Playwright's rAF-based pollers get throttled —
+    // poll in-page, where the loop keeps making progress.
+    const result = await page.evaluate(async () => {
       const p = window.__launchNativePlayer('http://stream.test/video.mkv', { verifyTimeoutMs: 2000, watchedDelayMs: 50 });
       setTimeout(() => {
         try {
@@ -225,12 +189,23 @@ test.describe('H3 — no fake-progress corruption', () => {
         } catch (e) {}
         document.dispatchEvent(new Event('visibilitychange'));
       }, 60);
-      await p;
-      await new Promise((r) => setTimeout(r, 400));
+      const opened = await p;
+      const deadline = Date.now() + 5000;
+      while (Date.now() < deadline) {
+        if ((window.__mockDispatchLog || []).some((e) => e.indexOf('"MarkAsWatched"') !== -1)) {
+          return { opened: opened, dispatched: true };
+        }
+        await new Promise((r) => setTimeout(r, 100));
+      }
+      return { opened: opened, dispatched: false };
     });
-    const dispatches = await page.evaluate(() => window.__coreDispatches || []);
+    expect(result.opened).toBe(true);
+    expect(result.dispatched).toBe(true);
+    // The shared mock logs each dispatched action object (flat): the inner
+    // payload lives under d.args, not the historical {action: {…}} nesting.
+    const dispatches = await parsedDispatches(page);
     const markWatched = dispatches.find((d) =>
-      d.action && d.action.args && d.action.args.action === 'MarkAsWatched'
+      d.action && d.args && d.args.action === 'MarkAsWatched'
     );
     expect(markWatched).toBeTruthy();
   });
@@ -241,15 +216,20 @@ test.describe('H3 — no fake-progress corruption', () => {
 // ==========================================================================
 test.describe('H4/M3 — overlay transcode gating', () => {
   test('overlay copy does not advertise transcode as a generic remedy', async ({ page }) => {
-    await page.goto('/');
-    const src = await page.content();
+    await bootApp(page, { core: 'none' });
+    await page.evaluate(() => {
+      window.__STREMIO_SERVER_URL__ = 'http://127.0.0.1:11470'; // default == no real server
+      window.__STREAM_INFO__ = { videoCodec: 'hevc', width: 3840, height: 2160 };
+      window.__showPlaybackWarning();
+    });
+    const overlay = page.locator('#dv-warning');
+    await expect(overlay).toBeVisible();
     // The misleading phrase must be gone.
-    expect(src.includes('or transcode via your streaming server')).toBe(false);
+    await expect(overlay).not.toContainText('or transcode via your streaming server');
   });
 
   test('Force Transcode button does NOT set __FORCE_TRANSCODE__ when no real server', async ({ page }) => {
-    await page.goto('/#/player/h4-noserver');
-    await page.waitForTimeout(1000);
+    await bootApp(page, { core: 'mock', url: '/#/player/h4-noserver' });
     const set = await page.evaluate(() => {
       window.__STREMIO_SERVER_URL__ = 'http://127.0.0.1:11470'; // default == no real server
       window.__STREAM_INFO__ = window.__STREAM_INFO__ || {};
@@ -268,8 +248,7 @@ test.describe('H4/M3 — overlay transcode gating', () => {
   });
 
   test('Force Transcode IS available when a real streaming server is configured', async ({ page }) => {
-    await page.goto('/#/player/h4-server');
-    await page.waitForTimeout(1000);
+    await bootApp(page, { core: 'mock', url: '/#/player/h4-server' });
     const set = await page.evaluate(() => {
       window.__STREMIO_SERVER_URL__ = 'http://192.168.1.50:11470'; // real, non-default
       window.__STREAM_INFO__ = window.__STREAM_INFO__ || {};
@@ -290,19 +269,15 @@ test.describe('H4/M3 — overlay transcode gating', () => {
 // ==========================================================================
 test.describe('H5 — recovery un-pauses on failed handoff', () => {
   test('helper __recoverAfterFailedHandoff resumes a paused video and shows advice', async ({ page }) => {
-    await page.goto('/#/player/h5');
-    await page.waitForTimeout(1500);
+    await installFakeVideoFactory(page);
+    await bootApp(page, { core: 'mock', url: '/#/player/h5' });
     const result = await page.evaluate(async () => {
-      var v = document.createElement('video');
-      document.body.appendChild(v);
-      var played = false;
-      v.play = function () { played = true; return Promise.resolve(); };
-      Object.defineProperty(v, 'paused', { configurable: true, get: function () { return !played; } });
+      const v = window.__makeFakeVideo({});
       // Simulate a paused-after-failed-handoff state.
       window.__recoverAfterFailedHandoff(v);
       await new Promise((r) => setTimeout(r, 50));
       var toastShown = !!document.querySelector('#__handoff-fail-toast, .dv-honest-toast');
-      return { played: played, toastShown: toastShown };
+      return { played: v.__counters.play > 0, toastShown: toastShown };
     });
     expect(result.played).toBe(true);
     expect(result.toastShown).toBe(true);
@@ -315,8 +290,7 @@ test.describe('H5 — recovery un-pauses on failed handoff', () => {
 test.describe('M1 — yellow-button toast honesty', () => {
   test('shows an honest failure toast when handoff is unverified', async ({ page }) => {
     await installFakeNative(page);
-    await page.goto('/#/player/m1');
-    await page.waitForTimeout(2500);
+    await bootApp(page, { core: 'mock', url: '/#/player/m1' });
     const toastText = await page.evaluate(async () => {
       // Speed up verification for the test.
       window.__NATIVE_VERIFY_TIMEOUT_MS__ = 200;
@@ -342,8 +316,7 @@ test.describe('M1 — yellow-button toast honesty', () => {
 test.describe('M2 — overlay keeps recovery UI on failed handoff', () => {
   test('overlay is NOT removed when the handoff fails', async ({ page }) => {
     await installFakeNative(page);
-    await page.goto('/#/player/m2');
-    await page.waitForTimeout(2500);
+    await bootApp(page, { core: 'mock', url: '/#/player/m2' });
     const stillThere = await page.evaluate(async () => {
       window.__NATIVE_VERIFY_TIMEOUT_MS__ = 200;
       window.__STREAM_INFO__ = window.__STREAM_INFO__ || {};
@@ -367,16 +340,14 @@ test.describe('M2 — overlay keeps recovery UI on failed handoff', () => {
 test.describe('Diagnostic panel', () => {
   test('window.__showVidaaDiagnostic exists and renders a screenshot-friendly panel', async ({ page }) => {
     await installFakeNative(page);
-    await page.goto('/');
-    await page.waitForTimeout(2000);
+    await bootApp(page, { core: 'none' });
     const exists = await page.evaluate(() => typeof window.__showVidaaDiagnostic === 'function');
     expect(exists).toBe(true);
   });
 
   test('panel reports omi_platform + sendPlatformMessage presence (the key per-device datum)', async ({ page }) => {
     await installFakeNative(page);
-    await page.goto('/');
-    await page.waitForTimeout(2000);
+    await bootApp(page, { core: 'none' });
     const text = await page.evaluate(() => {
       window.__STREAM_INFO__ = { videoCodec: 'hevc', width: 3840, height: 2160, container: 'mkv' };
       window.__showVidaaDiagnostic();
@@ -389,8 +360,7 @@ test.describe('Diagnostic panel', () => {
 
   test('panel includes stream container/codec/resolution and is dismissible', async ({ page }) => {
     await installFakeNative(page);
-    await page.goto('/');
-    await page.waitForTimeout(2000);
+    await bootApp(page, { core: 'none' });
     const result = await page.evaluate(async () => {
       window.__STREAM_INFO__ = { videoCodec: 'hevc', width: 3840, height: 2160, container: 'mkv' };
       window.__showVidaaDiagnostic();
@@ -411,8 +381,7 @@ test.describe('Diagnostic panel', () => {
   });
 
   test('diagnostic is registered as a VIDAA settings item', async ({ page }) => {
-    await page.goto('/');
-    await page.waitForTimeout(2000);
+    await bootApp(page, { core: 'none' });
     const registered = await page.evaluate(() => {
       var items = window.__vidaaSettingsItems || [];
       return items.some(function (i) { return /diagnostic/i.test(i.id || '') || /diagnostic/i.test(i.label || ''); });
@@ -422,8 +391,7 @@ test.describe('Diagnostic panel', () => {
 
   test('diagnostic reachable via color-button combo (no number keys)', async ({ page }) => {
     await installFakeNative(page);
-    await page.goto('/#/player/diag-combo');
-    await page.waitForTimeout(2000);
+    await bootApp(page, { core: 'mock', url: '/#/player/diag-combo' });
     const shown = await page.evaluate(async () => {
       window.__STREAM_INFO__ = { videoCodec: 'hevc', width: 3840, height: 2160, container: 'mkv' };
       // Green held, then Red — the chosen combo (color keys only).
@@ -441,13 +409,11 @@ test.describe('Diagnostic panel', () => {
 // ==========================================================================
 test.describe('Honest stall messaging', () => {
   test('__showHonestStallMessage renders a dismissible NON-fullscreen message', async ({ page }) => {
-    await page.goto('/#/player/honest');
-    await page.waitForTimeout(1500);
+    await bootApp(page, { core: 'mock', url: '/#/player/honest' });
     const result = await page.evaluate(async () => {
       window.__showHonestStallMessage();
       var el = document.getElementById('dv-honest-stall');
       if (!el) return { present: false };
-      var cs = getComputedStyle(el);
       // Must NOT be a fullscreen overlay that traps the remote.
       var isFullscreen = (el.offsetWidth >= window.innerWidth - 2) && (el.offsetHeight >= window.innerHeight - 2);
       var text = el.textContent || '';

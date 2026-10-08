@@ -26,6 +26,12 @@
 //   RT.onRegistryReady(fn)                Runs fn once window.__registerVidaaSettingsItem
 //                                        exists; ONE shared poller for all callers.
 //   RT.when(test, fn)                     Runs fn once test() turns truthy (shared poller).
+//   RT.coreUsable()                       True once window.core answers getState — the ONE
+//                                        core-booted predicate (splash removal, serverUrl
+//                                        push/heal asked here instead of re-testing inline).
+//   RT.coreReady(fn)                      Runs fn once the core is usable (RT.when-based).
+//                                        window.__VIDAA_CORE_READY__ latches the same fact
+//                                        exactly once, for flag-pollers (tests, probe-core).
 //   RT.serverConfigured()                 True when a non-default streaming server URL is set.
 //   RT.poll(fn, ms, opts)                 Route- and quiet-gated setInterval. opts:
 //                                          route: 'player'|'nonplayer' (default both),
@@ -206,6 +212,20 @@
     RT.onRegistryReady = function(fn) {
         RT.when(function() { return !!window.__registerVidaaSettingsItem; }, fn);
     };
+
+    // ── core-booted signal ────────────────────────────────────────────
+    // "Usable" means window.core answers getState — the real WASM engine
+    // after init resolves, or a test double honoring the same contract.
+    // The predicate lived inline in splash.js, server-url.js and
+    // probe-core.mjs before; they ask RT now. The latched flag gives
+    // pollers a stable marker instead of a predicate they must replicate.
+    RT.coreUsable = function() {
+        return !!(window.core && typeof window.core.getState === 'function');
+    };
+    RT.coreReady = function(fn) {
+        RT.when(RT.coreUsable, fn);
+    };
+    RT.coreReady(function() { window.__VIDAA_CORE_READY__ = true; });
 
     // ── streaming-server configured? ──────────────────────────────────
     RT.serverConfigured = function() {

@@ -328,7 +328,7 @@ node scripts/sync-translations.mjs             # translations from Stremio/strem
 npm run build && npx playwright test           # rebuild + 143-test verification
 ```
 
-See [docs/SYNC.md](docs/SYNC.md) for the full runbook, including how to bisect an engine version and how to add patches. Note: the compiled Theater v1.9.2 UI itself is an unpublished Stremio TV build — there is no newer public version of it to sync (the public Stremio/stremio-web repo is a different, mouse-first app).
+See [docs/SYNC.md](docs/SYNC.md) for the full runbook, including how to bisect an engine version and how to add patches. Note: the compiled Theater v1.9.2 UI has no open source — Stremio ships the TV app compiled-only from its CDN (`wn7lso8ghdka.stremio.com/hisense/<version>/`, currently serving 1.10.0; 1.9.2 has been removed from it), and the public Stremio/stremio-web repo is a different, mouse-first app. Our 1.9.2 copy descends from the static dump at [ananjaser1211/stremio-hisense-tvos](https://github.com/ananjaser1211/stremio-hisense-tvos) — full chain in SYNC.md (Provenance).
 
 ## Under the Hood
 

@@ -58,10 +58,26 @@ Three dialects coexist on purpose:
   feature-detect old APIs, `localStorage` keys prefixed `stremio_`.
 - `scripts/*.mjs`: modern Node ESM, `node:`-prefixed imports, 2-space indent.
 - `tests/*.spec.js`: CommonJS with `// @ts-check`, `test.describe` blocks
-  named after the GitHub issue they cover. Three test styles are in use:
-  `page.evaluate` against `window.__*` hooks, static assertions on built files
-  (e.g. `app/sw.js`, `app/settings.chunk.js`), and `page.route` network mocks.
-  Do not fake TV/native behavior to make a test pass — see the header of
+  named after the GitHub issue they cover. Boot and fake through the shared
+  seam in `tests/helpers.js` — never re-implement boot/mocks per spec:
+  `bootApp(page, opts)` waits on the kernel boot signal
+  (`window.__VIDAA_CORE_READY__`, latched by `RT.coreUsable()`) with three
+  core modes (`'real'` = WASM boots, `'mock'` = init-time mock core so the
+  engine never loads, `'none'` = patch layer only); `installServerMock`,
+  `installMockCore` (`__mockDispatchLog` holds dispatched actions, flat),
+  `installFakeNative` (capture-only), `installFakeVidaa`, and the
+  `waitFor*` helpers replace fixed sleeps. Wait on signals
+  (`waitForFunction`/`expect.poll`/locator auto-wait); keep a real-time
+  window only where the timer IS the behavior (rate limits, overwrite
+  windows) — and prefer in-page polls when the page stays "hidden"
+  (Playwright's rAF pollers stall there). No string-greps against built
+  artifacts (`app/*.chunk.js`, `app/main.js`, `app/index.html`): assert via
+  `window.__*` interfaces or rendered DOM. `webtorrent.spec.js` holds the
+  one documented exception (reads of `patches/` sources and the `sw.js`
+  assembly — build structure, not runtime). The Theater settings screen is
+  unreachable without a real account (login wall) — see the header of
+  `tests/server-url-manager.spec.js` for what that means. Do not fake
+  TV/native behavior to make a test pass — see the header of
   `tests/buffering-honesty.spec.js` for the project's reasoning.
 
 ## Releases and deployment

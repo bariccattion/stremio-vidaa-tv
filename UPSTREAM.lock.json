@@ -3,7 +3,7 @@
   "components": {
     "theater": {
       "version": "1.9.2",
-      "origin": "Stremio 'Theater' TV web build (unpublished TV frontend, lineage: stremio-web pre-v5 UI). Baseline: bariccattion/stremio-vidaa-tv v6 commit 8775223. player/video/settings chunks are stored PRISTINE here; patches/chunk-edits/*.json hold the VIDAA edits.",
+      "origin": "Stremio's official Hisense/VIDAA TV app ('Theater'), distributed compiled-only from Stremio's CDN (https://wn7lso8ghdka.stremio.com/hisense/<version>/ — the CDN keeps only the current version, so 1.9.2 is gone from it; no open-source repo, Stremio/stremio-web is a different app). Chain of custody: ananjaser1211/stremio-hisense-tvos dump 'Hisense WebOS 1.9.2' (commit eafda4a, 2025-11-08 — the only surviving public 1.9.2) -> NoobyGains/stremio-vidaa-tv v6 (commit 8775223, 2026-03-29 — grafted the stremio-core-web v5 engine; UI/translation/asset chunks byte-identical to the dump) -> restructured here into upstream/theater-1.9.2. player/video/settings chunks are stored PRISTINE here; patches/chunk-edits/*.json hold the VIDAA edits.",
       "dir": "upstream/theater-1.9.2",
       "files": {
         "theater-1.9.2/0cf35cc8444a3ffca8d9.png": "sha256:6f3498489de81b0e5ee3cb486ca1c6ea5b31c4946a49243f6c5b161e988a4f38",

@@ -30,20 +30,24 @@ for (let i = 0; i < 20 && !up; i++) {
 if (!up) { console.error('probe: local server never came up'); await browser.close(); process.exit(1); }
 
 await page.goto(`http://localhost:${PORT}/`, { waitUntil: 'load', timeout: 30000 });
-// Wait up to 20s for the patch layer to observe a booted core (splash removal is driven by core readiness).
+// Wait up to 20s for the patch layer to observe a booted core. The kernel
+// latches __VIDAA_CORE_READY__ via RT.coreUsable() — the same signal the
+// splash removal and the Playwright suite's bootApp() wait on — so this
+// probe validates the flag itself, not a private copy of the predicate.
 let coreState = null;
 for (let i = 0; i < 40; i++) {
   await page.waitForTimeout(500);
   coreState = await page.evaluate(() => ({
+    coreReady: window.__VIDAA_CORE_READY__ === true,
     hasCore: !!window.core,
     splashGone: !document.getElementById('splash'),
     patchVersion: window.__STREMIO_PATCH_VERSION__ || null,
     buildCommit: window.__BUILD_COMMIT__ || null,
   })).catch(() => null);
-  if (coreState?.hasCore && coreState.splashGone) break;
+  if (coreState?.coreReady && coreState.splashGone) break;
 }
 console.log(JSON.stringify(coreState, null, 2));
 console.log('console errors:', errors.length ? errors.slice(0, 8) : 'none');
 await browser.close();
 serve.kill();
-process.exit(coreState?.hasCore && coreState.splashGone && errors.length === 0 ? 0 : 1);
+process.exit(coreState?.coreReady && coreState.splashGone && errors.length === 0 ? 0 : 1);

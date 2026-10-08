@@ -8,33 +8,28 @@
 //     Stremio server on port 11470 — STRICTLY manual, never at startup
 //   • Confirm pings the saved URL with a timeout and toasts the result
 //   • the old custom overlay (__showServerUrlManager) is gone
+//
+// Seam: bootApp() waits on the kernel boot signal (window.__VIDAA_CORE_READY__).
+// The settings-screen wiring is asserted at the SEAM INTERFACE —
+// window.__vidaaSettingsRows — not by rendering the screen: Theater 1.9.2
+// forces a login for anonymous profiles (every #/settings navigation redirects
+// to #/login), and the app holds its own core reference from boot, so neither
+// a window.core mock nor a post-boot proxy can drive the real settings UI.
+// Residuals covered by the build instead of specs: the chunk edits' presence
+// and exact-once application (scripts/build.mjs fails otherwise).
 const { test, expect } = require('@playwright/test');
-const fs = require('node:fs');
+const {
+  bootApp, installServerMock, installMockCore, waitForServerToast,
+} = require('./helpers');
 
 test.setTimeout(60000);
 
-const MOCK_SETTINGS = JSON.stringify({ values: { serverVersion: '4.20.0' } });
-
-function mockServer(page, hostPattern) {
-  // Probes to hostPattern answer like a real Stremio server; everything else
-  // (the 700+ other sweep candidates) fails fast instead of timing out.
-  return Promise.all([
-    page.route(/heartbeat/, async (route) => {
-      if (hostPattern.test(route.request().url())) await route.fulfill({ status: 200, body: 'ok' });
-      else await route.abort();
-    }),
-    page.route(/\/settings/, async (route) => {
-      if (hostPattern.test(route.request().url())) {
-        await route.fulfill({ status: 200, contentType: 'application/json', body: MOCK_SETTINGS });
-      } else await route.abort();
-    }),
-  ]);
-}
+const reloadCount = (page) =>
+  page.evaluate(() => (window.__mockDispatchLog || []).filter((e) => e.indexOf('"Reload"') !== -1).length);
 
 test.describe('Native Edit URL dialog integration (settings/server-url-manager.js)', () => {
   test('custom overlay is removed; dialog hooks + engine are exposed', async ({ page }) => {
-    await page.goto('/');
-    await page.waitForTimeout(1500);
+    await bootApp(page, { core: 'none' });
     const types = await page.evaluate(() => ({
       overlay: typeof window.__showServerUrlManager,
       detect: typeof window.__autoDetectStremioServer,
@@ -47,60 +42,59 @@ test.describe('Native Edit URL dialog integration (settings/server-url-manager.j
     expect(types.dialogTest).toBe('function');
   });
 
-  test('built settings.chunk.js wires Auto-Detect + ping into the native dialog', () => {
-    const src = fs.readFileSync('app/settings.chunk.js', 'utf8');
-    const indexSrc = fs.readFileSync('app/index.html', 'utf8');
-    // Plain field: no live per-keystroke round-trip, commit once on Confirm.
-    expect(src).not.toContain('onChange: w');
-    expect(src).toContain('var _urlVal = t.settings().streamingServerUrl');
-    expect(src).toContain('if (_finalUrl) {');
-    expect(src).toContain('w(_finalUrl);');
-    // Auto-Detect button inside the native dialog.
-    expect(src).toContain('label: "Auto-Detect"');
-    expect(src).toContain('window.__serverDialogAutoDetect()');
-    // Reachability ping after Confirm.
-    expect(src).toContain('window.__serverDialogTest(_finalUrl)');
-    // Custom overlay entry point fully gone.
-    expect(src).not.toContain('__showServerUrlManager');
-    expect(indexSrc).not.toContain('__showServerUrlManager');
-    // The Vidaa TV section is a thin chunk seam delegating to settings/settings-ui.js;
-    // its entries live in the inlined patch layer.
-    expect(src).toContain('__vidaaSettingsRows(g, p)');
-    expect(indexSrc).toContain('Quiet Player Mode');
-    expect(indexSrc).toContain('Playback Diagnostics');
-    expect(indexSrc).toContain('Exit Stremio');
+  test('settings rows: the Vidaa TV section content is served by the patch layer (interface)', async ({ page }) => {
+    await bootApp(page, { core: 'none' });
+    const rows = await page.evaluate(() => {
+      const g = { animations: () => true, setAnimations: () => {} };
+      const p = { name: 'Web' };
+      return window.__vidaaSettingsRows(g, p).map((row) => ({
+        label: typeof row.label === 'function' ? row.label() : row.label,
+        hasDirectOnClick: typeof row.onClick === 'function',
+        options: (row.options || []).map((o) => ({
+          hasChecked: typeof o.checked === 'function',
+          hasSelected: typeof o.selected === 'function',
+          hasOnClick: typeof o.onClick === 'function',
+        })),
+      }));
+    });
+    const labels = rows.map((r) => r.label);
+    // The thin chunk seam delegates the whole section to
+    // window.__vidaaSettingsRows(g, p); its content comes from the
+    // settingsStore registry plus the settings/settings-ui.js specials.
+    expect(labels).toContain('Quiet Player Mode');
+    expect(labels).toContain('Auto Native Player for MKV');
+    expect(labels).toContain('Auto Native Player (all streams)');
+    expect(labels.some((l) => /^Audio Offset/.test(String(l)))).toBe(true);
+    expect(labels).toContain('Playback Diagnostics');
+    expect(labels).toContain('Exit Stremio');
+    // Shape contract for the SolidJS settings renderer: every row is
+    // interactive — a direct onClick (action rows) or options carrying
+    // checked/selected + onClick callables (toggles/choices). A malformed row
+    // is what would crash the native Settings screen.
+    for (const row of rows) {
+      expect(row.hasDirectOnClick || row.options.length > 0).toBe(true);
+      for (const o of row.options) {
+        expect(o.hasChecked || o.hasSelected).toBe(true);
+        expect(o.hasOnClick).toBe(true);
+      }
+    }
   });
 
   test('Confirm pings the saved URL and toasts the result (reachable)', async ({ page }) => {
-    await mockServer(page, /helper\.test/);
-    await page.goto('/');
-    await page.waitForTimeout(1500);
+    await installServerMock(page, { hostPattern: /helper\.test/ });
+    await bootApp(page, { core: 'none' });
     await page.evaluate(() => window.__serverDialogTest('http://helper.test:11470'));
-    // The sticky "Checking …" toast appears first; wait for the final verdict.
-    const text = await page.evaluate(async () => {
-      var start = Date.now();
-      while (Date.now() - start < 5000) {
-        var el = document.getElementById('dv-server-toast');
-        var t = el ? (el.textContent || '') : '';
-        if (t && !/checking/i.test(t)) return t;
-        await new Promise((r) => setTimeout(r, 100));
-      }
-      return '';
-    });
+    const text = await waitForServerToast(page);
     expect(text).toMatch(/reachable/i);
     expect(text).toMatch(/4\.20\.0|v4/i);
   });
 
   test('Confirm pings the saved URL and toasts the result (unreachable/timeout)', async ({ page }) => {
-    await page.goto('/');
-    await page.waitForTimeout(1500);
+    await bootApp(page, { core: 'none' });
     await page.evaluate(() => window.__serverDialogTest('http://10.255.255.1:11470'));
-    // Probe timeout (3s) + heartbeat fallback timeout (3s) + margin.
-    await new Promise((r) => setTimeout(r, 7500));
-    const text = await page.evaluate(() => {
-      var el = document.getElementById('dv-server-toast');
-      return el ? el.textContent : '';
-    });
+    // Probe timeout (3s) + heartbeat fallback timeout (3s); the waiter polls
+    // for the final verdict instead of sleeping a fixed margin.
+    const text = await waitForServerToast(page);
     expect(text).toMatch(/could not verify|timed out/i);
     // Calm wording: no alarming "not reachable" claim when we simply
     // couldn't verify, and the retry promise is stated.
@@ -108,9 +102,8 @@ test.describe('Native Edit URL dialog integration (settings/server-url-manager.j
   });
 
   test('Auto-Detect fills the dialog field with the found server, user still confirms', async ({ page }) => {
-    await mockServer(page, /127\.0\.0\.1/);
-    await page.goto('/');
-    await page.waitForTimeout(1500);
+    await installServerMock(page, { hostPattern: /127\.0\.0\.1/ });
+    await bootApp(page, { core: 'none' });
     const result = await page.evaluate(async () => {
       // Isolate: make our dummy the only text input on the page so the
       // best-effort fill (document.querySelector) targets it deterministically.
@@ -134,9 +127,8 @@ test.describe('Native Edit URL dialog integration (settings/server-url-manager.j
   });
 
   test('engine finds a server from extraCandidates and reports progress', async ({ page }) => {
-    await mockServer(page, /127\.0\.0\.1/);
-    await page.goto('/');
-    await page.waitForTimeout(1500);
+    await installServerMock(page, { hostPattern: /127\.0\.0\.1/ });
+    await bootApp(page, { core: 'none' });
     const found = await page.evaluate(() => {
       return new Promise((resolve) => {
         var progressCalls = 0;
@@ -153,9 +145,8 @@ test.describe('Native Edit URL dialog integration (settings/server-url-manager.j
   });
 
   test('engine sweeps the configured /24 subnet first', async ({ page }) => {
-    await mockServer(page, /192\.168\.1\.50/);
-    await page.goto('/');
-    await page.waitForTimeout(1500);
+    await installServerMock(page, { hostPattern: /192\.168\.1\.50/ });
+    await bootApp(page, { core: 'none' });
     const found = await page.evaluate(() => {
       window.__STREMIO_SERVER_URL__ = 'http://192.168.1.99:11470';
       return new Promise((resolve) => {
@@ -167,9 +158,9 @@ test.describe('Native Edit URL dialog integration (settings/server-url-manager.j
   });
 
   test('engine resolves null when nothing answers', async ({ page }) => {
-    await page.route(/heartbeat|\/settings/, (route) => route.abort());
-    await page.goto('/');
-    await page.waitForTimeout(1500);
+    const mock = await installServerMock(page, {});
+    mock.setServerUp(false);
+    await bootApp(page, { core: 'none' });
     const found = await page.evaluate(() => {
       return new Promise((resolve) => {
         window.__autoDetectStremioServer({ extraCandidates: [] }, function () {}, function (res) { resolve(res); });
@@ -187,15 +178,11 @@ test.describe('Native Edit URL dialog integration (settings/server-url-manager.j
       if (/192\.168\./.test(u)) sweepRequests++;
       await route.abort();
     });
-    await page.goto('/');
+    await bootApp(page, { core: 'none' });
+    // Observation window: past the 3s initial health check — the only traffic
+    // that should exist. A startup sweep would be immediate and continuous.
     await page.waitForTimeout(4000);
     expect(sweepRequests).toBe(0);
-  });
-
-  test('shared TextField suppresses TV-keyboard autocompletion', () => {
-    const src = fs.readFileSync('app/main.js', 'utf8');
-    expect(src).toContain('<input type=text autocomplete=off autocorrect=off autocapitalize=off>');
-    expect(src).not.toContain('"<input type=text>";');
   });
 });
 
@@ -211,89 +198,67 @@ test.describe('Native Edit URL dialog integration (settings/server-url-manager.j
 //   • the serverUrl module mirrors core URL changes to localStorage on every screen
 // ==========================================================================
 test.describe('False-Offline healing and honest status', () => {
-  function installMockCore(page, initialState) {
-    return page.addInitScript((state) => {
-      window.__ssState = state;
-      window.__ctxUrl = null;
-      window.__mockDispatchLog = [];
-      window.__mockCore = {
-        getState: function (model) {
-          if (model === 'streaming_server') {
-            return Promise.resolve({ baseUrl: window.__ssState.baseUrl, selected: { transportUrl: window.__ssState.transportUrl } });
-          }
-          if (model === 'ctx') {
-            return Promise.resolve(window.__ctxUrl ? { profile: { settings: { streamingServerUrl: window.__ctxUrl } } } : null);
-          }
-          return Promise.resolve(null);
-        },
-        dispatch: function (action) { window.__mockDispatchLog.push(JSON.stringify(action)); return Promise.resolve(); }
-      };
-      Object.defineProperty(window, 'core', { get: function () { return window.__mockCore; }, set: function () {}, configurable: true });
-    }, initialState);
-  }
-
   test('heal: page-healthy + core-offline triggers exactly one rate-limited Reload', async ({ page }) => {
-    await page.route(/\/settings/, (route) => route.fulfill({ status: 200, contentType: 'application/json', body: MOCK_SETTINGS }));
-    await installMockCore(page, { baseUrl: null, transportUrl: 'http://127.0.0.1:11470' });
-    await page.goto('/');
+    await installServerMock(page, { hostPattern: /127\.0\.0\.1/ });
+    await bootApp(page, {
+      core: 'mock',
+      mockCore: { streaming_server: { baseUrl: null, selected: { transportUrl: 'http://127.0.0.1:11470' } } },
+    });
     // Initial health check runs at 3s and heals on success.
-    await page.waitForTimeout(5000);
-    const first = await page.evaluate(() => (window.__mockDispatchLog || []).filter(function (e) { return e.indexOf('"Reload"') !== -1; }).length);
-    expect(first).toBeGreaterThanOrEqual(1);
-    // Next cycle (~13s) must be blocked by the 60s rate limit.
+    await expect.poll(() => reloadCount(page), { timeout: 8000 }).toBeGreaterThanOrEqual(1);
+    const first = await reloadCount(page);
+    // The next cycle (~13s) must be blocked by the 60s rate limit. This is a
+    // negative-continuity window: the timer IS the behavior under test.
     await page.waitForTimeout(11000);
-    const second = await page.evaluate(() => (window.__mockDispatchLog || []).filter(function (e) { return e.indexOf('"Reload"') !== -1; }).length);
-    expect(second).toBe(first);
+    expect(await reloadCount(page)).toBe(first);
   });
 
   test('no heal when the core already reports online', async ({ page }) => {
-    await page.route(/\/settings/, (route) => route.fulfill({ status: 200, contentType: 'application/json', body: MOCK_SETTINGS }));
-    await installMockCore(page, { baseUrl: 'http://127.0.0.1:11470', transportUrl: 'http://127.0.0.1:11470' });
-    await page.goto('/');
+    await installServerMock(page, { hostPattern: /127\.0\.0\.1/ });
+    await bootApp(page, {
+      core: 'mock',
+      mockCore: { streaming_server: { baseUrl: 'http://127.0.0.1:11470', selected: { transportUrl: 'http://127.0.0.1:11470' } } },
+    });
+    // Past the 3s initial health check — the only heal trigger.
     await page.waitForTimeout(5000);
-    const reloads = await page.evaluate(() => (window.__mockDispatchLog || []).filter(function (e) { return e.indexOf('"Reload"') !== -1; }).length);
-    expect(reloads).toBe(0);
+    expect(await reloadCount(page)).toBe(0);
   });
 
   test('no heal when the page-level probe also fails', async ({ page }) => {
-    await page.route(/heartbeat|\/settings/, (route) => route.abort());
-    await installMockCore(page, { baseUrl: null, transportUrl: 'http://127.0.0.1:11470' });
-    await page.goto('/');
+    const mock = await installServerMock(page, {});
+    mock.setServerUp(false);
+    await bootApp(page, {
+      core: 'mock',
+      mockCore: { streaming_server: { baseUrl: null, selected: { transportUrl: 'http://127.0.0.1:11470' } } },
+    });
+    // The failure path cannot heal (heal fires only on a successful probe);
+    // the window just needs to span the 3s initial check.
     await page.waitForTimeout(5000);
-    const reloads = await page.evaluate(() => (window.__mockDispatchLog || []).filter(function (e) { return e.indexOf('"Reload"') !== -1; }).length);
-    expect(reloads).toBe(0);
+    expect(await reloadCount(page)).toBe(0);
   });
 
-  test('SERVER row accepts the page-level health probe as online evidence', () => {
-    const src = fs.readFileSync('app/settings.chunk.js', 'utf8');
-    expect(src).toContain('f.online() || (window.__SERVER_HEALTH__');
-    expect(src).toContain('window.__SERVER_HEALTH__.status === "online"');
-    expect(src).toContain('MOBILE_SERVER_OFFLINE');
-  });
+  // The SERVER row's page-health evidence (f.online() ||
+  // __SERVER_HEALTH__.status === "online") cannot be asserted by rendering
+  // the settings screen — Theater 1.9.2 walls it behind a mandatory login
+  // (see the file header). Its behavioral halves are covered here: the heal
+  // tests prove the page-level probe flips online exactly when the core's
+  // one-shot check would have stuck Offline; the chunk edit itself is
+  // build-guaranteed (exact-once find/replace).
 
   test('toast falls back to /heartbeat before reporting failure', async ({ page }) => {
-    await page.route(/\/settings/, (route) => route.abort());
+    const mock = await installServerMock(page, {});
+    mock.setServerUp(false); // /settings aborted…
+    // …but /heartbeat answers (a later route registration wins).
     await page.route(/heartbeat/, (route) => route.fulfill({ status: 200, body: 'ok' }));
-    await page.goto('/');
-    await page.waitForTimeout(1500);
+    await bootApp(page, { core: 'none' });
     await page.evaluate(() => window.__serverDialogTest('http://helper.test:11470'));
-    const text = await page.evaluate(async () => {
-      var start = Date.now();
-      while (Date.now() - start < 8000) {
-        var el = document.getElementById('dv-server-toast');
-        var t = el ? (el.textContent || '') : '';
-        if (t && !/checking/i.test(t)) return t;
-        await new Promise((r) => setTimeout(r, 100));
-      }
-      return '';
-    });
+    const text = await waitForServerToast(page);
     expect(text).toMatch(/reachable/i);
     expect(text).toMatch(/heartbeat/i);
   });
 
   test('mixed-content hint only for https page + http server', async ({ page }) => {
-    await page.goto('/');
-    await page.waitForTimeout(1500);
+    await bootApp(page, { core: 'none' });
     const hints = await page.evaluate(() => ({
       httpsHttp: window.__mixedContentHint('https:', 'http://192.168.1.5:11470'),
       httpHttp: window.__mixedContentHint('http:', 'http://192.168.1.5:11470'),
@@ -306,20 +271,29 @@ test.describe('False-Offline healing and honest status', () => {
   });
 
   test('the serverUrl module mirrors core URL changes to localStorage on every screen', async ({ page }) => {
-    await installMockCore(page, { baseUrl: null, transportUrl: 'http://192.168.1.10:11470' });
-    // Baseline URL must exist before the first effective poll (after the 10s
-    // warmup); init scripts run in order, so this overrides the mock's null.
-    await page.addInitScript(() => { window.__ctxUrl = 'http://192.168.1.10:11470'; });
-    await page.goto('/#/library');
-    await page.waitForTimeout(11000); // warmup + baseline poll
-    await page.evaluate(() => { window.__ctxUrl = 'http://192.168.1.99:11470'; });
-    await page.waitForTimeout(4000); // next 2s poll picks up the change
+    await bootApp(page, {
+      core: 'mock',
+      url: '/#/library',
+      mockCore: {
+        streaming_server: { baseUrl: null, selected: { transportUrl: 'http://192.168.1.10:11470' } },
+        // Baseline URL exists from the start: the mirror's first poll (the
+        // bootPush settles instantly — nothing configured to push) records it
+        // as lastKnownUrl before we flip the core to a new URL.
+        ctx: { profile: { settings: { streamingServerUrl: 'http://192.168.1.10:11470' } } },
+      },
+    });
+    // Let the 2s mirror poll capture its baseline, then change the core's URL.
+    await page.waitForTimeout(3000);
+    await page.evaluate(() => window.__setMockCore('ctx',
+      { profile: { settings: { streamingServerUrl: 'http://192.168.1.99:11470' } } }));
+    await expect.poll(
+      () => page.evaluate(() => localStorage.getItem('stremio_server_url')),
+      { timeout: 6000 }
+    ).toBe('http://192.168.1.99:11470');
     const result = await page.evaluate(() => ({
-      ls: localStorage.getItem('stremio_server_url'),
       global: window.__STREMIO_SERVER_URL__,
       reloads: (window.__mockDispatchLog || []).filter(function (e) { return e.indexOf('"Reload"') !== -1; }).length
     }));
-    expect(result.ls).toBe('http://192.168.1.99:11470');
     expect(result.global).toBe('http://192.168.1.99:11470');
     expect(result.reloads).toBeGreaterThanOrEqual(1);
   });

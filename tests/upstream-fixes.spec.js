@@ -1,14 +1,23 @@
 // @ts-check
+// Seam: bootApp() (helpers.js). Core-dependent tests use the shared mock core
+// (window.__mockDispatchLog holds each dispatched action object, flat — the
+// inner payload lives under d.args), so waits are on dispatch signals, never
+// on fixed sleeps. __launchNativePlayer is a synchronous kernel global — no
+// install-timeout waits remain.
 const { test, expect } = require('@playwright/test');
+const { bootApp, installFakeNative } = require('./helpers');
 
 test.setTimeout(60000);
+
+const parsedDispatches = (page) =>
+  page.evaluate(() => (window.__mockDispatchLog || []).map((e) => JSON.parse(e)));
 
 // ==========================================================================
 // #10 — Suppress F key crash
 // ==========================================================================
 test.describe('#10 — Suppress F key crash', () => {
   test('F key is prevented on non-input elements', async ({ page }) => {
-    await page.goto('/');
+    await bootApp(page, { core: 'none' });
     const prevented = await page.evaluate(() => {
       var div = document.createElement('div');
       div.tabIndex = 0;
@@ -21,7 +30,7 @@ test.describe('#10 — Suppress F key crash', () => {
   });
 
   test('F key is NOT prevented on input elements', async ({ page }) => {
-    await page.goto('/');
+    await bootApp(page, { core: 'none' });
     const prevented = await page.evaluate(() => {
       var input = document.createElement('input');
       input.type = 'text';
@@ -34,7 +43,7 @@ test.describe('#10 — Suppress F key crash', () => {
   });
 
   test('F key is NOT prevented on textarea elements', async ({ page }) => {
-    await page.goto('/');
+    await bootApp(page, { core: 'none' });
     const prevented = await page.evaluate(() => {
       var ta = document.createElement('textarea');
       document.body.appendChild(ta);
@@ -51,13 +60,13 @@ test.describe('#10 — Suppress F key crash', () => {
 // ==========================================================================
 test.describe('#6 — Exit button', () => {
   test('window.__exitApp function exists', async ({ page }) => {
-    await page.goto('/');
+    await bootApp(page, { core: 'none' });
     const exists = await page.evaluate(() => typeof window.__exitApp === 'function');
     expect(exists).toBe(true);
   });
 
   test('__exitApp tries Hisense_Exit then window.close as fallback', async ({ page }) => {
-    await page.goto('/');
+    await bootApp(page, { core: 'none' });
     const result = await page.evaluate(() => {
       var closeCalled = false;
       var origClose = window.close;
@@ -71,8 +80,9 @@ test.describe('#6 — Exit button', () => {
   });
 
   test('exit button is NOT present outside settings page', async ({ page }) => {
-    await page.goto('/');
-    await page.waitForTimeout(3000);
+    await bootApp(page, { core: 'none' });
+    // The Exit Stremio row only renders inside the Settings screen's Vidaa TV
+    // section; at '/' (anonymous login screen) it must not exist.
     const count = await page.locator('#vidaa-exit-btn').count();
     expect(count).toBe(0);
   });
@@ -83,7 +93,7 @@ test.describe('#6 — Exit button', () => {
 // ==========================================================================
 test.describe('#9 — Playback speed & volume persistence', () => {
   test('getSavedSpeed returns valid stored value', async ({ page }) => {
-    await page.goto('/');
+    await bootApp(page, { core: 'none' });
     // Test the localStorage read/write logic the patch uses
     const result = await page.evaluate(() => {
       localStorage.setItem('stremio_playback_speed', '1.5');
@@ -94,7 +104,7 @@ test.describe('#9 — Playback speed & volume persistence', () => {
   });
 
   test('getSavedSpeed rejects invalid values', async ({ page }) => {
-    await page.goto('/');
+    await bootApp(page, { core: 'none' });
     const results = await page.evaluate(() => {
       var tests = [];
       // Test negative
@@ -117,7 +127,7 @@ test.describe('#9 — Playback speed & volume persistence', () => {
   });
 
   test('getSavedVolume returns valid stored value', async ({ page }) => {
-    await page.goto('/');
+    await bootApp(page, { core: 'none' });
     const result = await page.evaluate(() => {
       localStorage.setItem('stremio_volume', '0.7');
       var v = parseFloat(localStorage.getItem('stremio_volume'));
@@ -127,12 +137,14 @@ test.describe('#9 — Playback speed & volume persistence', () => {
   });
 
   test('speed is NOT applied outside #/player/ route', async ({ page }) => {
-    await page.goto('/');
+    await bootApp(page, { core: 'none' });
     await page.evaluate(() => {
       localStorage.setItem('stremio_playback_speed', '1.5');
       var video = document.createElement('video');
       document.body.appendChild(video);
     });
+    // Observation window: spans the patch's route poller — a misapplied speed
+    // would land within the first tick(s).
     await page.waitForTimeout(4000);
     const speed = await page.evaluate(() => {
       var v = document.querySelector('video');
@@ -147,53 +159,30 @@ test.describe('#9 — Playback speed & volume persistence', () => {
 // ==========================================================================
 test.describe('#8 — Subtitle size persistence', () => {
   test('saved subtitle size dispatches SetProp to core on player init', async ({ page }) => {
-    // Use addInitScript to set up core mock BEFORE page scripts run
-    await page.addInitScript(() => {
-      window.__testSizeDispatches = [];
-      // Define core early so the patch can use it
-      Object.defineProperty(window, 'core', {
-        get: function() { return window.__mockCore; },
-        set: function(v) {
-          // Allow the real core to be set but keep our mock as fallback
-          window.__realCore = v;
-          if (!window.__mockCore) {
-            window.__mockCore = {
-              dispatch: function(action, ctx) {
-                window.__testSizeDispatches.push({ action: action, ctx: ctx });
-              },
-              getState: function() { return Promise.resolve(null); }
-            };
-          }
-        },
-        configurable: true
-      });
-      window.__mockCore = {
-        dispatch: function(action, ctx) {
-          window.__testSizeDispatches.push({ action: action, ctx: ctx });
-        },
-        getState: function() { return Promise.resolve(null); }
-      };
+    await bootApp(page, {
+      core: 'mock',
+      url: '/#/player/sub-size-test',
+      mockCore: {},
+      localStorage: { stremio_subtitle_size: '150' },
     });
-
-    // Set localStorage before page load
-    await page.goto('/');
-    await page.evaluate(() => localStorage.setItem('stremio_subtitle_size', '150'));
-
-    // Navigate to player
-    await page.goto('/#/player/sub-size-test');
-    await page.waitForTimeout(7000);
-
-    const dispatches = await page.evaluate(() => window.__testSizeDispatches || []);
+    // The patch dispatches when it sees the player route + saved size — wait
+    // for the dispatch signal itself.
+    await page.waitForFunction(
+      () => (window.__mockDispatchLog || []).some((e) => e.indexOf('"subtitleSize"') !== -1),
+      null,
+      { timeout: 10000 }
+    );
+    const dispatches = await parsedDispatches(page);
     const sizeDispatch = dispatches.find(function(d) {
-      return d.action && d.action.args && d.action.args.args &&
-        d.action.args.args.propName === 'subtitleSize' &&
-        d.action.args.args.propValue === 150;
+      return d.args && d.args.args &&
+        d.args.args.propName === 'subtitleSize' &&
+        d.args.args.propValue === 150;
     });
     expect(sizeDispatch).toBeTruthy();
   });
 
   test('out-of-range sizes are ignored', async ({ page }) => {
-    await page.goto('/');
+    await bootApp(page, { core: 'none' });
     await page.evaluate(() => {
       localStorage.setItem('stremio_subtitle_size', '999');
     });
@@ -211,39 +200,27 @@ test.describe('#8 — Subtitle size persistence', () => {
 // ==========================================================================
 test.describe('#7 — Subtitle language memory', () => {
   test('exact match: saved "eng" selects track with lang "eng"', async ({ page }) => {
-    await page.addInitScript(() => {
-      window.__testLangDispatches = [];
-      window.__mockCore = {
-        dispatch: function(action, ctx) {
-          window.__testLangDispatches.push(action);
-        },
-        getState: function(store) {
-          if (store === 'player') {
-            return Promise.resolve({
-              subtitleTracks: [
-                { id: 'track-fr', lang: 'fre' },
-                { id: 'track-en', lang: 'eng' }
-              ]
-            });
-          }
-          return Promise.resolve(null);
+    await bootApp(page, {
+      core: 'mock',
+      url: '/#/player/lang-exact',
+      mockCore: {
+        player: {
+          subtitleTracks: [
+            { id: 'track-fr', lang: 'fre' },
+            { id: 'track-en', lang: 'eng' }
+          ]
         }
-      };
-      Object.defineProperty(window, 'core', {
-        get: function() { return window.__mockCore; },
-        set: function() {},
-        configurable: true
-      });
+      },
+      localStorage: { stremio_subtitle_lang: 'eng' },
     });
-
-    await page.goto('/');
-    await page.evaluate(() => localStorage.setItem('stremio_subtitle_lang', 'eng'));
-    await page.goto('/#/player/lang-exact');
-    await page.waitForTimeout(5000);
-
-    const dispatches = await page.evaluate(() => window.__testLangDispatches || []);
+    await page.waitForFunction(
+      () => (window.__mockDispatchLog || []).some((e) => e.indexOf('"selectedSubtitleTrackId"') !== -1),
+      null,
+      { timeout: 10000 }
+    );
+    const dispatches = await parsedDispatches(page);
     const langPick = dispatches.find(function(d) {
-      return d && d.args && d.args.args &&
+      return d.args && d.args.args &&
         d.args.args.propName === 'selectedSubtitleTrackId' &&
         d.args.args.propValue === 'track-en';
     });
@@ -251,39 +228,27 @@ test.describe('#7 — Subtitle language memory', () => {
   });
 
   test('partial match: saved "en" matches track lang "eng"', async ({ page }) => {
-    await page.addInitScript(() => {
-      window.__testPartialDispatches = [];
-      window.__mockCore = {
-        dispatch: function(action) {
-          window.__testPartialDispatches.push(action);
-        },
-        getState: function(store) {
-          if (store === 'player') {
-            return Promise.resolve({
-              subtitleTracks: [
-                { id: 'track-deu', lang: 'deu' },
-                { id: 'track-eng', lang: 'eng' }
-              ]
-            });
-          }
-          return Promise.resolve(null);
+    await bootApp(page, {
+      core: 'mock',
+      url: '/#/player/lang-partial',
+      mockCore: {
+        player: {
+          subtitleTracks: [
+            { id: 'track-deu', lang: 'deu' },
+            { id: 'track-eng', lang: 'eng' }
+          ]
         }
-      };
-      Object.defineProperty(window, 'core', {
-        get: function() { return window.__mockCore; },
-        set: function() {},
-        configurable: true
-      });
+      },
+      localStorage: { stremio_subtitle_lang: 'en' },
     });
-
-    await page.goto('/');
-    await page.evaluate(() => localStorage.setItem('stremio_subtitle_lang', 'en'));
-    await page.goto('/#/player/lang-partial');
-    await page.waitForTimeout(5000);
-
-    const dispatches = await page.evaluate(() => window.__testPartialDispatches || []);
+    await page.waitForFunction(
+      () => (window.__mockDispatchLog || []).some((e) => e.indexOf('"selectedSubtitleTrackId"') !== -1),
+      null,
+      { timeout: 10000 }
+    );
+    const dispatches = await parsedDispatches(page);
     const langPick = dispatches.find(function(d) {
-      return d && d.args && d.args.args &&
+      return d.args && d.args.args &&
         d.args.args.propName === 'selectedSubtitleTrackId' &&
         d.args.args.propValue === 'track-eng';
     });
@@ -291,7 +256,7 @@ test.describe('#7 — Subtitle language memory', () => {
   });
 
   test('no auto-select when no saved language', async ({ page }) => {
-    await page.goto('/');
+    await bootApp(page, { core: 'none' });
     await page.evaluate(() => {
       localStorage.removeItem('stremio_subtitle_lang');
     });
@@ -306,32 +271,27 @@ test.describe('#7 — Subtitle language memory', () => {
 // ==========================================================================
 test.describe('#11 — Subtitle off option', () => {
   test('window.__disableSubtitles is a function', async ({ page }) => {
-    await page.goto('/');
+    await bootApp(page, { core: 'none' });
     const exists = await page.evaluate(() => typeof window.__disableSubtitles === 'function');
     expect(exists).toBe(true);
   });
 
   test('dispatches null selectedSubtitleTrackId to core', async ({ page }) => {
-    await page.goto('/');
-    const dispatches = await page.evaluate(() => {
-      var calls = [];
-      window.core = { dispatch: function(a, c) { calls.push({ action: a, ctx: c }); } };
-      window.__disableSubtitles();
-      return calls;
-    });
+    await bootApp(page, { core: 'mock' });
+    await page.evaluate(() => window.__disableSubtitles());
+    const dispatches = await parsedDispatches(page);
     const nullSub = dispatches.find(function(d) {
-      return d.action && d.action.args && d.action.args.args &&
-        d.action.args.args.propName === 'selectedSubtitleTrackId' &&
-        d.action.args.args.propValue === null;
+      return d.args && d.args.args &&
+        d.args.args.propName === 'selectedSubtitleTrackId' &&
+        d.args.args.propValue === null;
     });
     expect(nullSub).toBeTruthy();
   });
 
   test('clears saved subtitle language from localStorage', async ({ page }) => {
-    await page.goto('/');
+    await bootApp(page, { core: 'mock' });
     await page.evaluate(() => {
       localStorage.setItem('stremio_subtitle_lang', 'eng');
-      window.core = { dispatch: function() {} };
       window.__disableSubtitles();
     });
     const stored = await page.evaluate(() => localStorage.getItem('stremio_subtitle_lang'));
@@ -343,15 +303,17 @@ test.describe('#11 — Subtitle off option', () => {
 // #12 — Pass full title to native player
 // ==========================================================================
 test.describe('#12 — Native player title', () => {
-  test('__launchNativePlayer is set after timeout', async ({ page }) => {
-    await page.goto('/');
-    await page.waitForTimeout(11000);
+  test('__launchNativePlayer is available as soon as the patch layer loads', async ({ page }) => {
+    // The consolidated launcher (kernel/native-player.js) is defined
+    // synchronously with the inline patch scripts — the historical 10s
+    // install timeout is gone, and so is the 11s wait.
+    await bootApp(page, { core: 'none' });
     const exists = await page.evaluate(() => typeof window.__launchNativePlayer === 'function');
     expect(exists).toBe(true);
   });
 
   test('__STREAM_INFO__ is used to store and retrieve title', async ({ page }) => {
-    await page.goto('/');
+    await bootApp(page, { core: 'none' });
     const title = await page.evaluate(() => {
       window.__STREAM_INFO__ = { title: 'Test Movie 2024' };
       return window.__STREAM_INFO__.title;
@@ -360,7 +322,7 @@ test.describe('#12 — Native player title', () => {
   });
 
   test('title scraping logic finds h1/h2 elements with title class', async ({ page }) => {
-    await page.goto('/');
+    await bootApp(page, { core: 'none' });
     // Directly test the title scraping logic the patch uses
     const title = await page.evaluate(() => {
       var h1 = document.createElement('h1');
@@ -383,17 +345,8 @@ test.describe('#12 — Native player title', () => {
     // (best-effort), each carrying the stream URL + a title — but the messages
     // being sent says NOTHING about success. See buffering-honesty.spec.js for
     // the verification-result assertions.
-    await page.addInitScript(() => {
-      window.__testPlatformMessages = [];
-      window.omi_platform = {
-        sendPlatformMessage: function(msg) {
-          window.__testPlatformMessages.push(JSON.parse(msg));
-        }
-      };
-    });
-
-    await page.goto('/');
-    await page.waitForTimeout(2000);
+    await installFakeNative(page, '__testPlatformMessages');
+    await bootApp(page, { core: 'none' });
 
     const sent = await page.evaluate(async () => {
       // Short verify window so the returned Promise settles quickly.
@@ -419,8 +372,7 @@ test.describe('#13 — Mark as watched on handoff', () => {
   // behaviour is asserted in buffering-honesty.spec.js (H3). Here we just verify
   // the feature is now a user-toggleable settings item per the project rule.
   test('mark-watched-on-handoff is registered as a toggleable settings item', async ({ page }) => {
-    await page.goto('/');
-    await page.waitForTimeout(2000);
+    await bootApp(page, { core: 'none' });
     const registered = await page.evaluate(() => {
       var items = window.__vidaaSettingsItems || [];
       return items.some(function (i) {
@@ -436,7 +388,7 @@ test.describe('#13 — Mark as watched on handoff', () => {
 // ==========================================================================
 test.describe('#14 — Full subtitle filenames', () => {
   test('__fullSubLabels object exists', async ({ page }) => {
-    await page.goto('/');
+    await bootApp(page, { core: 'none' });
     const exists = await page.evaluate(() =>
       typeof window.__fullSubLabels === 'object' && window.__fullSubLabels !== null
     );
@@ -444,7 +396,7 @@ test.describe('#14 — Full subtitle filenames', () => {
   });
 
   test('fetch wrapper still works for normal requests', async ({ page }) => {
-    await page.goto('/');
+    await bootApp(page, { core: 'none' });
     const ok = await page.evaluate(async () => {
       var resp = await fetch('/');
       return resp.status >= 200;
@@ -466,14 +418,17 @@ test.describe('#14 — Full subtitle filenames', () => {
       });
     });
 
-    await page.goto('/');
+    await bootApp(page, { core: 'none' });
     await page.evaluate(async () => {
       try { await fetch('/subtitles/test-movie'); } catch(e) {}
     });
-    await page.waitForTimeout(1500);
-
+    // The wrapper caches asynchronously — wait for the cache to be populated.
+    await page.waitForFunction(
+      () => Object.keys(window.__fullSubLabels || {}).length > 0,
+      null,
+      { timeout: 5000 }
+    );
     const labels = await page.evaluate(() => window.__fullSubLabels);
-    expect(Object.keys(labels).length).toBeGreaterThan(0);
     expect(labels['sub1']).toBe('Movie.2024.BluRay.1080p.English');
     expect(labels['sub2']).toBe('Spanish Translation');
   });
@@ -484,7 +439,7 @@ test.describe('#14 — Full subtitle filenames', () => {
 // ==========================================================================
 test.describe('#15 — Prefetch next episode', () => {
   test('prefetch logic correctly extracts next episode URL from state', async ({ page }) => {
-    await page.goto('/');
+    await bootApp(page, { core: 'none' });
 
     // Test the URL extraction logic the patch uses
     const result = await page.evaluate(() => {
@@ -512,7 +467,10 @@ test.describe('#15 — Prefetch next episode', () => {
   });
 
   test('no prefetch fires outside player route', async ({ page }) => {
-    await page.goto('/');
+    await bootApp(page, {
+      core: 'mock',
+      mockCore: { player: { nextVideo: { stream: { url: 'http://nope.test/video.mp4' } } } },
+    });
     await page.evaluate(() => {
       window.__prefetchCalls = [];
       var currentFetch = window.fetch;
@@ -522,15 +480,9 @@ test.describe('#15 — Prefetch next episode', () => {
         }
         return currentFetch.apply(this, arguments);
       };
-      window.core = {
-        getState: function() {
-          return Promise.resolve({
-            nextVideo: { stream: { url: 'http://nope.test/video.mp4' } }
-          });
-        },
-        dispatch: function() {}
-      };
     });
+    // Observation window: spans the patch's poller — a route-gating bug would
+    // fire a HEAD within the first tick(s).
     await page.waitForTimeout(8000);
     const calls = await page.evaluate(() => window.__prefetchCalls || []);
     expect(calls.length).toBe(0);
@@ -542,14 +494,7 @@ test.describe('#15 — Prefetch next episode', () => {
 // ==========================================================================
 test.describe('Integration', () => {
   test('all patch globals are defined after page load', async ({ page }) => {
-    // Set a stub __launchNativePlayer so #12's interval wraps it immediately
-    // (avoids waiting 10s for the setTimeout fallback)
-    await page.addInitScript(() => {
-      window.__launchNativePlayer = function() { return false; };
-    });
-
-    await page.goto('/');
-    await page.waitForTimeout(2000); // wait for intervals to set up globals
+    await bootApp(page, { core: 'none' });
 
     const globals = await page.evaluate(() => ({
       exitApp: typeof window.__exitApp,
@@ -565,7 +510,7 @@ test.describe('Integration', () => {
   });
 
   test('localStorage keys use stremio_ prefix', async ({ page }) => {
-    await page.goto('/');
+    await bootApp(page, { core: 'none' });
     await page.evaluate(() => {
       localStorage.setItem('stremio_playback_speed', '1.25');
       localStorage.setItem('stremio_volume', '0.8');
@@ -589,7 +534,9 @@ test.describe('Integration', () => {
   test('no console errors from patches during load', async ({ page }) => {
     var errors = [];
     page.on('pageerror', function(err) { errors.push(err.message); });
-    await page.goto('/');
+    await bootApp(page, { core: 'none' });
+    // Observation window: patch pollers run on intervals — give them a few
+    // ticks to prove they don't throw.
     await page.waitForTimeout(3000);
     var patchErrors = errors.filter(function(e) {
       return e.indexOf('[patch]') !== -1 || e.indexOf('[exit]') !== -1 ||

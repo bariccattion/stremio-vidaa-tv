@@ -40,17 +40,23 @@ regressions are what the strictness is for — don't bypass it.
 
 ## What can actually be synced
 
-The compiled UI ("Stremio Theater 1.9.2") is an **unpublished** Stremio TV build;
-it is not in the public Stremio/stremio-web repo (that repo is a different,
-mouse-first app) and no newer version of it exists publicly. The syncable,
-Stremio-published components are:
+The compiled UI ("Stremio Theater") has no open-source repo: it is not in the
+public Stremio/stremio-web repo (that repo is a different, mouse-first app).
+Stremio distributes the compiled TV app officially from its CDN —
+`https://wn7lso8ghdka.stremio.com/hisense/<version>/index.html` — but keeps only
+the current version there: 1.9.2 now 404s behind a redirect, and 1.10.0 is what
+is live. Static dumps of past versions exist at
+[ananjaser1211/stremio-hisense-tvos](https://github.com/ananjaser1211/stremio-hisense-tvos);
+that repo is the only surviving public copy of 1.9.2. The UI has no sync
+procedure either way (see Provenance) — the syncable, Stremio-published
+components are:
 
 | Component | Source | Current |
 |---|---|---|
 | Engine | `@stremio/stremio-core-web` on npm (MIT) | 0.64.1 |
 | Translations | [Stremio/stremio-translations](https://github.com/Stremio/stremio-translations) | master, synced 2026-10-07 |
 | WebTorrent trackers | [ngosang/trackerslist](https://github.com/ngosang/trackerslist) websocket list | master, synced 2026-10-07 |
-| TV frontend | none — frozen at Theater 1.9.2 | — |
+| TV frontend | Stremio CDN (`wn7lso8ghdka.stremio.com/hisense/<ver>/`, current version only) · dumps at [ananjaser1211/stremio-hisense-tvos](https://github.com/ananjaser1211/stremio-hisense-tvos) | frozen at 1.9.2 (dump `eafda4a`); a 1.10.0 dump exists (`d40ebd1`) but no sync path |
 
 ## Sync procedure
 
@@ -139,11 +145,31 @@ works, and pin that in `UPSTREAM.lock.json`. Git history holds every predecessor
 
 ## Provenance
 
-- **Theater 1.9.2 chunks**: inherited from [bariccattion/stremio-vidaa-tv](https://github.com/bariccattion/stremio-vidaa-tv)
-  v6 baseline (commit `8775223`), which itself repackaged Stremio's unpublished
-  TV web build. Pristine copies live in `upstream/theater-1.9.2/`; the three
-  modified chunks (player, video, settings) are stored pristine there too, with
-  the VIDAA edits expressed as data in `patches/chunk-edits/`.
+- **Theater 1.9.2 chunks**: the UI is Stremio's official Hisense/VIDAA TV app,
+  distributed compiled-only from Stremio's CDN
+  (`https://wn7lso8ghdka.stremio.com/hisense/<version>/`; no open-source repo —
+  Stremio/stremio-web is a different, mouse-first app, and the CDN keeps only
+  the current version). Chain of custody, oldest to newest:
+  1. [ananjaser1211/stremio-hisense-tvos](https://github.com/ananjaser1211/stremio-hisense-tvos)
+     commit `eafda4a` ("Hisense WebOS 1.9.2 Dump", 2025-11-08) — a static dump
+     of the CDN app (that repo's commits are CDN dumps; "WebOS" there is a
+     misnomer, Hisense runs VIDAA). The CDN no longer serves 1.9.2, so this
+     dump is the only surviving public copy.
+  2. [NoobyGains/stremio-vidaa-tv](https://github.com/NoobyGains/stremio-vidaa-tv)
+     v6 (commit `8775223`, 2026-03-29) forked the dump: kept every UI,
+     translation and asset chunk byte-identical (blob-hash verified), edited
+     `main.js`, `index.html`, `runtime.js`, `service.js`, `core.chunk.js`,
+     `1477.chunk.js`, `search.chunk.js` and `video.chunk.js`, and grafted the
+     stremio-core-web v5 engine (`v5-worker.js`, WASM, `sw.js`). Its README
+     credited the dump repo, then dropped the credit 15 minutes later
+     (`54dd1b4`).
+  3. This repo inherited that v6 tree and restructured it into
+     `upstream/theater-1.9.2/` (restructure commit `9e2ea4a`).
+  Pristine copies live in `upstream/theater-1.9.2/`; the three modified chunks
+  (player, video, settings) are stored pristine there too, with the VIDAA edits
+  expressed as data in `patches/chunk-edits/`. A 1.10.0 dump exists (commit
+  `d40ebd1`, 2026-07-09) — adopting it would be a manual re-baseline, not a
+  sync.
 - **Engine**: `@stremio/stremio-core-web` from npm; `sync-core.mjs` bundles the
   package's CommonJS worker into a self-contained classic worker with esbuild.
 - **Deployment**: GitHub Actions builds `app/` and force-pushes it to the

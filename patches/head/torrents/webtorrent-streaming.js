@@ -510,6 +510,10 @@
             enabled: isEnabled(),
             libraryLoaded: clientLoaded,
             clientActive: !!(window.__webtorrentClient && !window.__webtorrentClient.destroyed),
+            // Announce list + stall window exposed read-only so tests (and the
+            // diagnostic panel) assert the live values instead of grepping source.
+            trackers: TRACKERS.slice(),
+            stallTimeoutMs: PEER_STALL_TIMEOUT,
             activeTorrent: activeTorrent ? {
                 name: activeTorrent.name,
                 progress: Math.round((activeTorrent.progress || 0) * 100),

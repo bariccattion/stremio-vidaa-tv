@@ -51,7 +51,7 @@
     // ── Core push: point the WASM core at our URL (settings + reload). ──
     function pushToCore(url, done) {
         try {
-            if (!window.core || typeof window.core.getState !== 'function') { if (done) done(); return; }
+            if (!RT.coreUsable()) { if (done) done(); return; }
             window.core.getState('ctx').then(function(ctxState) {
                 if (!ctxState || !ctxState.profile || !ctxState.profile.settings) { if (done) done(); return; }
                 var cur = ctxState.profile.settings;
@@ -96,7 +96,7 @@
         var attempts = 0;
         var t = setInterval(function() {
             if (bootPushSettled || ++attempts > 60) { clearInterval(t); bootPushSettled = true; return; }
-            if (!window.core) return;
+            if (!RT.coreUsable()) return;
             clearInterval(t);
             pushToCore(url, function() { bootPushSettled = true; });
         }, 500);
@@ -111,7 +111,7 @@
     var lastKnownUrl = null;
     RT.poll(function() {
         if (!bootPushSettled) return;
-        if (!window.core) return;
+        if (!RT.coreUsable()) return;
         window.core.getState('ctx').then(function(state) {
             if (!state || !state.profile || !state.profile.settings) return;
             var url = state.profile.settings.streamingServerUrl;
@@ -148,7 +148,7 @@
 
     function maybeHealCore() {
         try {
-            if (!window.core || typeof window.core.getState !== 'function') return;
+            if (!RT.coreUsable()) return;
             window.core.getState('streaming_server').then(function(state) {
                 if (!state || typeof state !== 'object') return;
                 var coreUrl = state.selected && state.selected.transportUrl;

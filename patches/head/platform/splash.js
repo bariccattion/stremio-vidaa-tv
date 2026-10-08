@@ -1,5 +1,10 @@
 // Splash screen — remove when core is ready
 (function() {
+    var RT = window.__vidaaRuntime;
+    function coreUsable() {
+        if (RT && typeof RT.coreUsable === 'function') return RT.coreUsable();
+        return !!(window.core && typeof window.core.getState === 'function');
+    }
     var bar = document.getElementById('splash-bar');
     var progress = 0;
     var tick = setInterval(function() {
@@ -8,7 +13,7 @@
     }, 400);
     var safetyTimer = null;
     var check = setInterval(function() {
-        if (window.core && typeof window.core.getState === 'function') {
+        if (coreUsable()) {
             clearInterval(check);
             clearInterval(tick);
             if (safetyTimer) clearTimeout(safetyTimer);
