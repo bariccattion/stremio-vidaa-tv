@@ -7,7 +7,7 @@
     var LANG_KEY = 'stremio_subtitle_lang';
 
     function getSavedLang() {
-        try { return localStorage.getItem(LANG_KEY) || null; } catch(e) { return null; }
+        return RT.store.get(LANG_KEY, null);
     }
 
     var lastPlayerHash = '';
@@ -54,7 +54,7 @@
             } catch(e) {}
 
             if (currentLang) {
-                try { localStorage.setItem(LANG_KEY, currentLang); } catch(e) {}
+                RT.store.set(LANG_KEY, currentLang);
             }
 
             // Auto-select saved language on new video (only once per player session)

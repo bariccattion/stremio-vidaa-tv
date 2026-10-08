@@ -80,8 +80,8 @@
                 if (!inPlayer) return;
                 // Only auto-handoff when the user has opted into either auto-native
                 // mode. Otherwise log the hint and let the user handle it.
-                var allOn = localStorage.getItem('stremio_auto_native_player') === 'true';
-                var mkvOn = localStorage.getItem('stremio_auto_native_player_mkv') === 'true';
+                var allOn = window.__vidaaRuntime.store.getBool('stremio_auto_native_player', false);
+                var mkvOn = window.__vidaaRuntime.store.getBool('stremio_auto_native_player_mkv', false);
                 if (!allOn && !mkvOn) {
                     log('stream is stalling; user has no auto-native toggle on — no silent handoff');
                     // No auto-handoff path. Offer the user a CHOICE — never block,

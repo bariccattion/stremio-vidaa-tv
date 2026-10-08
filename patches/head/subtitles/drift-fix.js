@@ -102,15 +102,11 @@
         log('Starting progressive drift correction at', (driftRate * 60).toFixed(2), 'ms/min');
 
         var lastCorrectionTime = 0;
-        correctionInterval = setInterval(function() {
+        // Drift correction is playback-critical subtitle sync — RT.poll
+        // gates the player route; the disable check stays in the tick
+        // (quiet:false keeps it live in Quiet Player Mode, as before).
+        correctionInterval = RT.poll(function() {
             if (!isEnabled()) {
-                clearInterval(correctionInterval);
-                correctionInterval = null;
-                return;
-            }
-
-            var hash = window.location.hash || '';
-            if (hash.indexOf('#/player/') !== 0) {
                 clearInterval(correctionInterval);
                 correctionInterval = null;
                 return;
@@ -164,7 +160,7 @@
             } catch(e) {
                 log('Failed to apply correction:', e.message);
             }
-        }, 5000);
+        }, 5000, { route: 'player', quiet: false });
     }
 
     function cleanup() {
@@ -210,11 +206,10 @@
         log('Hooked core.dispatch for subtitle delay interception');
     }
 
-    // Watch for player route changes
+    // Watch for player route changes (all-route bookkeeping — quiet:false)
     var wasInPlayer = false;
-    setInterval(function() {
-        var hash = window.location.hash || '';
-        var inPlayer = hash.indexOf('#/player/') === 0;
+    RT.poll(function() {
+        var inPlayer = RT.inPlayer();
 
         if (wasInPlayer && !inPlayer) {
             log('Left player — cleaning up drift tracker');
@@ -239,7 +234,7 @@
         }
 
         wasInPlayer = inPlayer;
-    }, 1500);
+    }, 1500, { quiet: false });
 
     // Register settings toggle
     if (window.__registerCommunityToggle) {

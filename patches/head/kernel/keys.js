@@ -51,13 +51,9 @@
     var registrations = [];
     var seq = 0;
 
-    function inPlayer() {
-        return (window.location.hash || '').indexOf('#/player/') === 0;
-    }
-
     function routeOk(opts) {
         if (!opts.route) return true;
-        return opts.route === 'player' ? inPlayer() : !inPlayer();
+        return opts.route === 'player' ? window.__vidaaRuntime.inPlayer() : !window.__vidaaRuntime.inPlayer();
     }
 
     // A registration matches when one of its names (or '*') is among the

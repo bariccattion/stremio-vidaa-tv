@@ -213,6 +213,13 @@
         return !!(u && u !== 'http://127.0.0.1:11470');
     };
 
+    // ── route predicate ─────────────────────────────────────────────
+    // The ONE player-route check (hash PREFIX matching) — the same
+    // semantics RT.poll's route option and the key dispatcher use.
+    RT.inPlayer = function() {
+        return (window.location.hash || '').indexOf('#/player/') === 0;
+    };
+
     // ── poller scheduler ──────────────────────────────────────────────
     // The single place that knows the active route and the Quiet Player
     // Mode flag; patches declare their conditions at registration instead
@@ -239,7 +246,7 @@
         return setInterval(function() {
             try {
                 if (route) {
-                    var inPlayer = (window.location.hash || '').indexOf('#/player/') === 0;
+                    var inPlayer = RT.inPlayer();
                     if (route === 'player' ? !inPlayer : inPlayer) return;
                 }
                 if (wantQuiet && window.__QUIET_PLAYER_ACTIVE__) return;

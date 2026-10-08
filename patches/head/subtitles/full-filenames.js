@@ -72,8 +72,9 @@
         }
     });
 
-    // Activate observer when in player
-    setInterval(function() {
+    // Activate observer when in player (quiet:false — faithful to the raw
+    // interval this replaces, which never paused)
+    window.__vidaaRuntime.poll(function() {
         var hash = window.location.hash || '';
         if (hash.indexOf('#/player/') === 0) {
             patchObserver.observe(document.body, { childList: true, subtree: true });
@@ -82,5 +83,5 @@
             fullSubLabels = {};
             window.__fullSubLabels = fullSubLabels;
         }
-    }, 2000);
+    }, 2000, { quiet: false });
 })();

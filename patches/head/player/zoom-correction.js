@@ -2,7 +2,8 @@
     // Auto mode detects 720p VIDAA viewports and scales the UI only.
     // Player layout stays untouched unless users explicitly opt into legacy player zoom.
     (function() {
-        var log = window.__vidaaRuntime.logger('zoom');
+        var RT = window.__vidaaRuntime;
+        var log = RT.logger('zoom');
         var MODE_KEY = 'stremio_720p_mode';
         var ZOOM_KEY = 'stremio_720p_zoom';
         var PLAYER_ZOOM_KEY = 'stremio_zoom_disable_in_player';
@@ -23,29 +24,14 @@
             stremio_server_url: true
         };
 
-        function isPlayerRoute() {
-            return (window.location.hash || '').indexOf('#/player/') === 0;
-        }
-
         function readStoredMode() {
-            try {
-                var mode = localStorage.getItem(MODE_KEY);
-                return VALID_MODES[mode] ? mode : null;
-            } catch (e) {
-                return null;
-            }
+            var mode = RT.store.get(MODE_KEY, null);
+            return VALID_MODES[mode] ? mode : null;
         }
 
         function inferLegacyMode() {
-            var zoomEnabled = true;
-            var playerZoomDisabled = true;
-            try {
-                zoomEnabled = localStorage.getItem(ZOOM_KEY) !== 'false';
-                playerZoomDisabled = localStorage.getItem(PLAYER_ZOOM_KEY) !== 'false';
-            } catch (e) {
-                zoomEnabled = true;
-                playerZoomDisabled = true;
-            }
+            var zoomEnabled = RT.store.getBool(ZOOM_KEY, true);
+            var playerZoomDisabled = RT.store.getBool(PLAYER_ZOOM_KEY, true);
             if (!zoomEnabled) return 'off';
             return playerZoomDisabled ? 'auto' : 'ui-and-player';
         }
@@ -59,22 +45,18 @@
         }
 
         function syncLegacyZoomKeys(mode) {
-            try {
-                if (mode === 'off') {
-                    localStorage.setItem(ZOOM_KEY, 'false');
-                    localStorage.setItem(PLAYER_ZOOM_KEY, 'true');
-                    return;
-                }
-                localStorage.setItem(ZOOM_KEY, 'true');
-                localStorage.setItem(PLAYER_ZOOM_KEY, mode === 'ui-and-player' ? 'false' : 'true');
-            } catch (e) {}
+            if (mode === 'off') {
+                RT.store.set(ZOOM_KEY, false);
+                RT.store.set(PLAYER_ZOOM_KEY, true);
+                return;
+            }
+            RT.store.set(ZOOM_KEY, true);
+            RT.store.set(PLAYER_ZOOM_KEY, mode === 'ui-and-player' ? false : true);
         }
 
         function set720pMode(mode) {
             if (!VALID_MODES[mode]) mode = 'auto';
-            try {
-                localStorage.setItem(MODE_KEY, mode);
-            } catch (e) {}
+            RT.store.set(MODE_KEY, mode);
             syncLegacyZoomKeys(mode);
         }
 
@@ -113,7 +95,7 @@
 
         function shouldApplyUiZoom() {
             if (!shouldTreatAs720pContext()) return false;
-            if (isPlayerRoute() && !shouldZoomPlayerRoute()) return false;
+            if (RT.inPlayer() && !shouldZoomPlayerRoute()) return false;
             return true;
         }
 

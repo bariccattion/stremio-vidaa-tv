@@ -9,10 +9,6 @@
         return RT.store.getBool(LS_KEY, true);
     }
 
-    function inPlayerRoute() {
-        return window.location.hash.indexOf('#/player/') !== -1;
-    }
-
     var overlay = null;
     var updateInterval = null;
     var statsVisible = false; // starts hidden, press any color button to show
@@ -133,7 +129,7 @@
         // Start hidden — user presses a button to show
         if (overlay) overlay.style.display = 'none';
         statsVisible = false;
-        updateInterval = setInterval(updateStats, UPDATE_INTERVAL);
+        updateInterval = RT.poll(updateStats, UPDATE_INTERVAL, { route: 'player', quiet: false });
         log('Stats overlay started');
     }
 
@@ -148,7 +144,7 @@
 
     function onHashChange() {
         if (!isEnabled()) return;
-        if (inPlayerRoute()) {
+        if (RT.inPlayer()) {
             startUpdating();
         } else {
             stopUpdating();

@@ -8,11 +8,15 @@
     var applied = false;
     var lastVideoSrc = '';
 
+    var store = window.__vidaaRuntime.store;
+
     function getSavedSpeed() {
-        try { var v = parseFloat(localStorage.getItem(SPEED_KEY)); return (v && v > 0 && v <= 4) ? v : null; } catch(e) { return null; }
+        var v = parseFloat(store.get(SPEED_KEY, null));
+        return (v && v > 0 && v <= 4) ? v : null;
     }
     function getSavedVolume() {
-        try { var v = parseFloat(localStorage.getItem(VOLUME_KEY)); return (v >= 0 && v <= 1) ? v : null; } catch(e) { return null; }
+        var v = parseFloat(store.get(VOLUME_KEY, null));
+        return (v >= 0 && v <= 1) ? v : null;
     }
 
     // Watch for video element and apply saved settings.
@@ -60,16 +64,14 @@
             if (window.__QUIET_PLAYER_ACTIVE__) return;
             var currentSpeed = video.playbackRate;
             var currentVol = video.volume;
-            try {
-                if (currentSpeed && currentSpeed > 0 && currentSpeed !== lastPersistedSpeed) {
-                    localStorage.setItem(SPEED_KEY, String(currentSpeed));
-                    lastPersistedSpeed = currentSpeed;
-                }
-                if (currentVol >= 0 && (lastPersistedVol === null || Math.abs(currentVol - lastPersistedVol) > 0.01)) {
-                    localStorage.setItem(VOLUME_KEY, String(currentVol));
-                    lastPersistedVol = currentVol;
-                }
-            } catch(e) {}
+            if (currentSpeed && currentSpeed > 0 && currentSpeed !== lastPersistedSpeed) {
+                store.set(SPEED_KEY, String(currentSpeed));
+                lastPersistedSpeed = currentSpeed;
+            }
+            if (currentVol >= 0 && (lastPersistedVol === null || Math.abs(currentVol - lastPersistedVol) > 0.01)) {
+                store.set(VOLUME_KEY, String(currentVol));
+                lastPersistedVol = currentVol;
+            }
         }
     }, 1500);
 })();

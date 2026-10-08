@@ -35,10 +35,6 @@
         try { return typeof omi_platform !== 'undefined' && typeof omi_platform.sendPlatformMessage === 'function'; } catch(e) { return false; }
     }
 
-    function inPlayerRoute() {
-        return (window.location.hash || '').indexOf('#/player/') === 0;
-    }
-
     function isMkvUrl(url) {
         if (!url) return false;
         // Match .mkv anywhere in the URL path (before a query string).
@@ -65,9 +61,12 @@
     }
 
     var lastHandedOffUrl = '';
-    setInterval(function() {
+    // Player-entry watcher: must run on every route (handoff decisions
+    // happen on entry), and auto-native handoff stays live in Quiet
+    // Player Mode — hence no route gate and quiet:false.
+    RT.poll(function() {
         if (!modeAll() && !modeMkvOnly()) return;
-        if (!inPlayerRoute()) { lastHandedOffUrl = ''; return; }
+        if (!RT.inPlayer()) { lastHandedOffUrl = ''; return; }
         if (!hasNative()) return;
 
         var video = document.querySelector('video');
@@ -100,7 +99,7 @@
                 }
             });
         }
-    }, 1500);
+    }, 1500, { quiet: false });
 
     RT.onRegistryReady(function() {
         window.__registerVidaaSettingsItem({

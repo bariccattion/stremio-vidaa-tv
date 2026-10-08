@@ -64,7 +64,7 @@
         };
         var on = [];
         for (var label in keys) {
-            try { if (localStorage.getItem(keys[label]) === 'true') on.push(label); } catch(e) {}
+            if (RT.store.getBool(keys[label], false)) on.push(label);
         }
         return on.length ? on.join(', ') : 'none';
     }

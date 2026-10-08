@@ -21,22 +21,17 @@
     try { if (localStorage.getItem(WARN_KEY) === null) localStorage.setItem(WARN_KEY, 'false'); } catch(e) {}
 
     function isWarningEnabled() {
-        try { return localStorage.getItem(WARN_KEY) === 'true'; } catch(e) { return false; }
+        return RT.store.getBool(WARN_KEY, false);
     }
 
-    // Monitor video element for playback failures — warn only on actual failure
+    // Monitor video element for playback failures — warn only on actual failure.
+    // RT.poll gates: player route only, silent under Quiet Player Mode.
     var watchInterval = null;
 
     function startPlaybackWatch() {
         if (watchInterval) return;
-        watchInterval = setInterval(function() {
-            var hash = window.location.hash || '';
-            if (hash.indexOf('#/player/') !== 0) {
-                if (watchInterval) { clearInterval(watchInterval); watchInterval = null; }
-                return;
-            }
+        watchInterval = RT.poll(function() {
             if (!isWarningEnabled()) return; // User disabled playback warning
-            if (window.__QUIET_PLAYER_ACTIVE__) return; // Freed CPU for the video decoder
             var video = document.querySelector('video');
             if (!video) return;
 
@@ -60,21 +55,21 @@
             } else {
                 window.__STREAM_INFO__.stallCheck = null;
             }
-        }, 2000);
+        }, 2000, { route: 'player' });
     }
 
-    // Watch for player route
+    // Watch for player route (bookkeeping — must keep ticking under Quiet
+    // Player Mode, hence quiet:false)
     var wasInPlayer = false;
-    setInterval(function() {
-        var hash = window.location.hash || '';
-        var inPlayer = hash.indexOf('#/player/') === 0;
+    RT.poll(function() {
+        var inPlayer = RT.inPlayer();
         if (inPlayer) {
             if (!wasInPlayer) { window.__STREAM_INFO__ = {}; }
             startPlaybackWatch();
         }
         if (!inPlayer) { window.__FORCE_TRANSCODE__ = false; }
         wasInPlayer = inPlayer;
-    }, 1000);
+    }, 1000, { quiet: false });
 
     // Intercept probe responses — log codec info but DON'T block playback
     var origFetch = window.fetch;

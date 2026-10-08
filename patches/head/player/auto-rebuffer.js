@@ -10,10 +10,6 @@
         return RT.store.getBool(LS_KEY, true);
     }
 
-    function inPlayerRoute() {
-        return window.location.hash.indexOf('#/player/') !== -1;
-    }
-
     var stallTimer = 0;
     var lastTime = null;
     var retries = 0;
@@ -119,7 +115,7 @@
     }
 
     function checkStall() {
-        if (!inPlayerRoute()) return;
+        if (!RT.inPlayer()) return;
 
         var video = document.querySelector('video');
         if (!video) { lastTime = null; return; }
@@ -161,7 +157,9 @@
 
     function startMonitor() {
         if (monitorInterval) return;
-        monitorInterval = setInterval(checkStall, CHECK_INTERVAL);
+        // Stall recovery is playback-critical: route-gated but never
+        // silenced by Quiet Player Mode.
+        monitorInterval = RT.poll(checkStall, CHECK_INTERVAL, { route: 'player', quiet: false });
         log('Stall monitor started');
     }
 
@@ -177,7 +175,7 @@
 
     function onHashChange() {
         if (!isEnabled()) return;
-        if (inPlayerRoute()) {
+        if (RT.inPlayer()) {
             startMonitor();
         } else {
             stopMonitor();

@@ -8,7 +8,8 @@
     var SIZE_KEY = 'stremio_subtitle_size';
 
     function getSavedSize() {
-        try { var v = parseInt(localStorage.getItem(SIZE_KEY), 10); return (v && v >= 50 && v <= 250) ? v : null; } catch(e) { return null; }
+        var v = parseInt(RT.store.get(SIZE_KEY, null), 10);
+        return (v && v >= 50 && v <= 250) ? v : null;
     }
 
     // Monitor subtitle size changes in core state and persist them
@@ -49,7 +50,7 @@
                 try { size = state.subtitleSize || (state.settings && state.settings.subtitleSize); } catch(e) {}
                 if (size && size >= 50 && size <= 250 && size !== lastAppliedSize) {
                     lastAppliedSize = size;
-                    try { localStorage.setItem(SIZE_KEY, String(size)); } catch(e) {}
+                    RT.store.set(SIZE_KEY, String(size));
                 }
             }).catch(function() {});
         }

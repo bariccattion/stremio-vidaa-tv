@@ -65,8 +65,9 @@
         log('Injected "Off" option into subtitle picker');
     });
 
-    // Start observing when in player
-    setInterval(function() {
+    // Start observing when in player (subtitle picker injection is
+    // playback-critical UX — quiet:false keeps it live in Quiet Player Mode)
+    window.__vidaaRuntime.poll(function() {
         var hash = window.location.hash || '';
         if (hash.indexOf('#/player/') === 0 && hash !== lastHash) {
             lastHash = hash;
@@ -77,5 +78,5 @@
             observer.disconnect();
             lastHash = '';
         }
-    }, 1000);
+    }, 1000, { quiet: false });
 })();
