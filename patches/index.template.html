@@ -30,6 +30,9 @@
         button:focus { outline: 3px solid #a78bfa !important; outline-offset: 2px; }
     </style>
     <title>Stremio - Freedom to Stream</title>
+    <!-- This file is the patch MANIFEST: execution order = placeholder order
+         (never filename order), and the build fails if a patches/head file is
+         missing here, or a kernel/ patch inlines after a feature patch. -->
     <script>
 {{patches/head/kernel/runtime.js}}
     </script>
@@ -62,6 +65,19 @@
     </div>
     <div id="patch-version" style="position:fixed;bottom:4px;right:8px;color:rgba(255,255,255,0.3);font-size:10px;z-index:99999;pointer-events:none;">v{{VERSION}}</div>
 </body>
+<!-- kernel (body region): the rest of the shared toolbox — inlines first. -->
+<script>
+{{patches/head/kernel/native-player.js}}
+</script>
+<script>
+{{patches/head/kernel/device.js}}
+</script>
+<script>
+{{patches/head/kernel/settings-store.js}}
+</script>
+<script>
+{{patches/head/kernel/diagnostics-registry.js}}
+</script>
 <script>
 {{patches/head/platform/sw-register.js}}
 </script>
@@ -81,16 +97,10 @@
 {{patches/head/player/remote-color-buttons.js}}
 </script>
 <script>
-{{patches/head/kernel/native-player.js}}
-</script>
-<script>
 {{patches/head/platform/watchdog.js}}
 </script>
 <script>
 {{patches/head/platform/memory-pressure.js}}
-</script>
-<script>
-{{patches/head/kernel/device.js}}
 </script>
 <script>
 {{patches/head/platform/install-prompt.js}}
@@ -135,9 +145,6 @@
 {{patches/head/torrents/webtorrent-streaming.js}}
 </script>
 <script>
-{{patches/head/kernel/settings-store.js}}
-    </script>
-    <script>
 {{patches/head/audio/force-stereo.js}}
     </script>
     <script>
@@ -192,9 +199,6 @@
 </script>
 <script>
 {{patches/head/settings/server-url-manager.js}}
-</script>
-<script>
-{{patches/head/kernel/diagnostics-registry.js}}
 </script>
 
 </html>

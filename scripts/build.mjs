@@ -152,6 +152,26 @@ for (const defFile of readdirSync(editsDir).filter(n => n.endsWith('.json')).sor
 
 // ---------- 4. index.html ----------
 let html = toLf(readFileSync(join(root, 'patches', 'index.template.html'), 'utf8'));
+// Kernel-first guard: within each script region (head = before the deferred
+// app bundles, body = after), every kernel/ patch must inline before any
+// feature patch, so load-time kernel calls always resolve. With the old NNN
+// prefixes gone, this check is what keeps template edits from silently
+// reordering the kernel behind a consumer.
+{
+  const boundary = html.indexOf('src="runtime.js?v={{VERSION}}"');
+  if (boundary === -1) die('kernel-first guard: deferred bundle marker not found in the template');
+  const orderRe = /\{\{patches\/(head\/[0-9a-z][0-9a-z-]*(?:\/[0-9a-z][0-9a-z-]*)*\.js)\}\}/g;
+  const sawFeature = { head: false, body: false };
+  let m;
+  while ((m = orderRe.exec(html)) !== null) {
+    const region = m.index < boundary ? 'head' : 'body';
+    if (m[1].indexOf('head/kernel/') === 0) {
+      if (sawFeature[region]) die(`kernel-first violation: ${m[1]} inlines after a feature patch in the ${region} region`);
+    } else {
+      sawFeature[region] = true;
+    }
+  }
+}
 const placeholderRe = /\{\{patches\/(head\/[0-9a-z][0-9a-z-]*(?:\/[0-9a-z][0-9a-z-]*)*\.js)\}\}/g;
 const referenced = new Set();
 let ph;
