@@ -1,10 +1,12 @@
 // VIDAA Diagnostics — copyable debug blob for install/runtime reports
 (function() {
     var RT = window.__vidaaRuntime;
+    var UI = window.__vidaaUI;
+    var safeRead = UI.safe;
 
-    function safeRead(fn, fallback) {
-        try { return fn(); } catch (e) { return fallback; }
-    }
+    // Modal chrome, action buttons and the esc/toast helpers now live in
+    // kernel/ui.js (__vidaaUI); this patch keeps only the diagnostics
+    // content collectors and the legacy entry-point globals.
 
     function collectDiagnostics() {
         var trackedKeys = [
@@ -73,107 +75,6 @@
             vidaaState: window.__VIDAA_STATE__ || null
         };
     }
-
-    function closeModalById(id) {
-        var existing = document.getElementById(id);
-        if (existing) existing.remove();
-    }
-
-    function createVidaaActionButton(label, opts) {
-        opts = opts || {};
-        var button = document.createElement('button');
-        if (opts.id) button.id = opts.id;
-        button.type = 'button';
-        button.textContent = label;
-        button.style.cssText = (
-            opts.primary
-                ? 'background:#7b5bf5;color:#fff;border:none;'
-                : opts.danger
-                    ? 'background:#d34d4d;color:#fff;border:none;'
-                    : opts.success
-                        ? 'background:#2d8f5f;color:#fff;border:none;'
-                        : 'background:rgba(255,255,255,0.08);color:#fff;border:1px solid rgba(255,255,255,0.14);'
-        ) + 'border-radius:10px;padding:10px 16px;font-family:PlusJakartaSans,sans-serif;font-weight:700;cursor:pointer;';
-        return button;
-    }
-
-    function createVidaaModal(config) {
-        closeModalById(config.id);
-
-        var modal = document.createElement('div');
-        modal.id = config.id;
-        modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.82);z-index:100002;display:flex;align-items:center;justify-content:center;padding:24px;';
-
-        var panel = document.createElement('div');
-        panel.style.cssText = 'width:min(' + (config.width || '920px') + ', 92vw);' +
-            (config.maxHeight ? 'max-height:' + config.maxHeight + ';' : '') +
-            'background:#12121a;border:1px solid rgba(255,255,255,0.12);border-radius:16px;box-shadow:0 18px 50px rgba(0,0,0,0.55);display:flex;flex-direction:column;padding:20px;gap:14px;';
-
-        var header = document.createElement('div');
-        header.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:12px;';
-        header.innerHTML = '<div style="font-family:PlusJakartaSans,sans-serif;font-size:1.3rem;font-weight:700;color:#fff;">' + config.title + '</div>';
-
-        var actions = document.createElement('div');
-        actions.style.cssText = 'display:flex;gap:10px;align-items:center;';
-
-        var closeBtn = createVidaaActionButton(config.closeLabel || 'Close');
-        closeBtn.onclick = function() {
-            closeModalById(config.id);
-            if (config.onClose) config.onClose();
-        };
-        actions.appendChild(closeBtn);
-
-        if (config.headerButtons && config.headerButtons.length) {
-            for (var i = 0; i < config.headerButtons.length; i++) {
-                actions.insertBefore(config.headerButtons[i], closeBtn);
-            }
-        }
-        header.appendChild(actions);
-
-        panel.appendChild(header);
-
-        if (config.helpText) {
-            var help = document.createElement('div');
-            help.style.cssText = 'font-family:PlusJakartaSans,sans-serif;font-size:0.95rem;line-height:1.5;color:rgba(255,255,255,0.7);';
-            help.textContent = config.helpText;
-            panel.appendChild(help);
-        }
-
-        var body = document.createElement('div');
-        body.style.cssText = config.bodyStyle || '';
-        panel.appendChild(body);
-
-        if (config.footerButtons && config.footerButtons.length) {
-            var footer = document.createElement('div');
-            footer.style.cssText = 'display:flex;gap:10px;justify-content:flex-end;';
-            for (var j = 0; j < config.footerButtons.length; j++) footer.appendChild(config.footerButtons[j]);
-            panel.appendChild(footer);
-        }
-
-        modal.appendChild(panel);
-        modal.onclick = function(e) {
-            if (e.target === modal) {
-                closeModalById(config.id);
-                if (config.onClose) config.onClose();
-            }
-        };
-        document.body.appendChild(modal);
-
-        return {
-            modal: modal,
-            panel: panel,
-            body: body,
-            closeBtn: closeBtn,
-            close: function() {
-                closeModalById(config.id);
-                if (config.onClose) config.onClose();
-            }
-        };
-    }
-
-    window.__closeVidaaModalById = closeModalById;
-    window.__createVidaaActionButton = createVidaaActionButton;
-    window.__createVidaaModal = createVidaaModal;
 
     function copyBlob(textarea) {
         var text = textarea.value;
@@ -312,7 +213,7 @@
                 textarea.style.cssText = 'width:100%;min-height:360px;max-height:56vh;resize:vertical;border-radius:12px;border:1px solid rgba(255,255,255,0.1);background:rgba(0,0,0,0.26);color:#dfe2ff;padding:16px;font-family:Consolas,\"Courier New\",monospace;font-size:13px;line-height:1.45;';
                 textarea.value = JSON.stringify(collectDiagnostics(), null, 2);
 
-                var copyBtn = createVidaaActionButton('Copy Debug Blob', { id: 'vidaa-diag-copy-btn', primary: true });
+                var copyBtn = UI.button('Copy Debug Blob', { id: 'vidaa-diag-copy-btn', primary: true });
                 copyBtn.style.marginTop = '10px';
                 copyBtn.onclick = function() { copyBlob(textarea); };
 
@@ -331,7 +232,7 @@
                 textarea.style.cssText = 'width:100%;min-height:360px;max-height:56vh;resize:vertical;border-radius:12px;border:1px solid rgba(255,255,255,0.1);background:rgba(0,0,0,0.26);color:#dfe2ff;padding:16px;font-family:Consolas,\"Courier New\",monospace;font-size:13px;line-height:1.45;';
                 textarea.value = '{"status":"collecting"}';
 
-                var copyBtn = createVidaaActionButton('Copy Playback Blob', { id: 'vidaa-playback-diag-copy-btn', primary: true });
+                var copyBtn = UI.button('Copy Playback Blob', { id: 'vidaa-playback-diag-copy-btn', primary: true });
                 copyBtn.style.marginTop = '10px';
                 copyBtn.onclick = function() { copyBlob(textarea); };
 

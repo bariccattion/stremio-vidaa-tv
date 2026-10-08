@@ -142,10 +142,11 @@
         label: 'Torrent',
         render: function(body) {
             var st = (typeof window.__getWebTorrentStatus === 'function') ? window.__getWebTorrentStatus() : null;
+            var esc = window.__vidaaUI.esc;
             function line(label, value) {
                 return '<div style="display:flex;justify-content:space-between;gap:18px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.06);font-size:15px;">'
-                    + '<span style="color:rgba(255,255,255,0.55);">' + label + '</span>'
-                    + '<span style="font-weight:700;text-align:right;">' + value + '</span></div>';
+                    + '<span style="color:rgba(255,255,255,0.55);">' + esc(label) + '</span>'
+                    + '<span style="font-weight:700;text-align:right;">' + esc(value) + '</span></div>';
             }
             if (!st) {
                 body.textContent = 'WebTorrent patch not loaded.';

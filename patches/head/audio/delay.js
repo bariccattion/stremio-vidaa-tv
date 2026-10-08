@@ -23,8 +23,9 @@
     var sourceNode = null;
     var delayNode = null;
     var connectedVideo = null;
-    var overlayEl = null;
-    var overlayTimer = null;
+    var delayReadout = window.__vidaaUI.transient('audio-delay-overlay',
+        'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:rgba(0,0,0,0.8);color:#fff;padding:16px 32px;border-radius:10px;font-family:PlusJakartaSans,sans-serif;font-size:1.3rem;font-weight:700;z-index:99999;pointer-events:none;transition:opacity 0.4s;text-align:center;',
+        1500, 'opacity 0.4s');
 
     function isEnabled() {
         return RT.store.getBool(ENABLED_KEY, false);
@@ -94,19 +95,8 @@
     }
 
     function showOverlay(delayMs) {
-        if (!overlayEl) {
-            overlayEl = document.createElement('div');
-            overlayEl.id = 'audio-delay-overlay';
-            overlayEl.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:rgba(0,0,0,0.8);color:#fff;padding:16px 32px;border-radius:10px;font-family:PlusJakartaSans,sans-serif;font-size:1.3rem;font-weight:700;z-index:99999;pointer-events:none;transition:opacity 0.4s;text-align:center;';
-            document.body.appendChild(overlayEl);
-        }
-        overlayEl.style.opacity = '1';
         var sign = delayMs >= 0 ? '+' : '';
-        overlayEl.textContent = 'Audio Delay: ' + sign + delayMs + 'ms';
-        if (overlayTimer) clearTimeout(overlayTimer);
-        overlayTimer = setTimeout(function() {
-            if (overlayEl) overlayEl.style.opacity = '0';
-        }, 1500);
+        delayReadout.show('Audio Delay: ' + sign + delayMs + 'ms');
     }
 
     // Key handlers: Shift+[ to decrease, Shift+] to increase audio delay.
@@ -138,7 +128,7 @@
 
         if (wasInPlayer && !inPlayer) {
             cleanupAudio();
-            if (overlayEl) { try { overlayEl.remove(); } catch(e) {} overlayEl = null; }
+            delayReadout.remove();
         }
 
         if (inPlayer && isEnabled() && getDelay() > 0) {

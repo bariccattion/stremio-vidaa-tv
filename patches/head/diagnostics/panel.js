@@ -20,13 +20,10 @@
     'use strict';
 
     var RT = window.__vidaaRuntime;
+    var esc = window.__vidaaUI.esc; // shared kernel esc (also escapes quotes)
 
-    function esc(s) {
-        return String(s == null ? '' : s).replace(/[&<>"]/g, function(c) {
-            return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c];
-        });
-    }
-
+    // safeCall is deliberately LOCAL: unlike UI.safe it folds empty-string
+    // results into null, which the device-info rows below rely on.
     function safeCall(fn) {
         try {
             if (typeof fn === 'function') {

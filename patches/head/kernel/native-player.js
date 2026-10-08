@@ -265,8 +265,7 @@
     // APIs still work.
     window.__vidaaKeys.on('yellow', function() {
         function mkToast(text, bg) {
-            return RT.toast(text, {
-                at: 'center',
+            return window.__vidaaUI.toastCenter(text, {
                 bg: bg || 'rgba(0,0,0,0.9)',
                 ms: 3500,
                 extra: 'padding:20px 40px;border-radius:12px;font-size:1.2rem;'

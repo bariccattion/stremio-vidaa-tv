@@ -1,46 +1,26 @@
 // Resolution indicator in player
 (function() {
-    var indicator = null;
-    var hideTimer = null;
-
-    function createIndicator() {
-        if (indicator) return indicator;
-        indicator = document.createElement('div');
-        indicator.id = 'quality-indicator';
-        indicator.style.cssText = 'position:fixed;top:14px;right:14px;background:rgba(0,0,0,0.75);color:white;padding:5px 12px;border-radius:6px;font-size:13px;z-index:99998;pointer-events:none;font-family:monospace;display:none;backdrop-filter:blur(4px);';
-        document.body.appendChild(indicator);
-        return indicator;
-    }
-
-    function showIndicator() {
-        if (!indicator) return;
-        indicator.style.display = 'block';
-        indicator.style.opacity = '1';
-        clearTimeout(hideTimer);
-        hideTimer = setTimeout(function() {
-            if (indicator) { indicator.style.transition = 'opacity 0.5s'; indicator.style.opacity = '0'; }
-        }, 5000);
-    }
+    // Transient pill via the UI kernel: created hidden, shown on demand,
+    // fades 5 s after the last show. Content refreshes never auto-show.
+    var pill = window.__vidaaUI.transient('quality-indicator',
+        'position:fixed;top:14px;right:14px;background:rgba(0,0,0,0.75);color:white;padding:5px 12px;border-radius:6px;font-size:13px;z-index:99998;pointer-events:none;font-family:monospace;display:none;backdrop-filter:blur(4px);',
+        5000);
 
     // Any keypress in the player refreshes the indicator's visibility clock.
     window.__vidaaKeys.on('*', function() {
-        if (indicator) {
-            indicator.style.transition = 'none';
-            showIndicator();
-        }
+        pill.touch();
     }, { route: 'player', priority: -100 });
 
     window.__vidaaRuntime.poll(function() {
         var hash = window.location.hash || '';
         if (hash.indexOf('#/player/') !== 0) {
-            if (indicator) { indicator.style.display = 'none'; indicator.style.opacity = '0'; }
+            pill.hideNow();
             return;
         }
-        if (!indicator) createIndicator();
         var video = document.querySelector('video');
         if (!video || !video.videoWidth) return;
 
-        var el = indicator;
+        var el = pill.setText();
         var w = video.videoWidth, h = video.videoHeight;
         var label;
         if (w >= 3840) label = '4K';

@@ -5,7 +5,7 @@
     var healthOverlay = null;
 
     function showToast(msg, bg, ms) {
-        RT.toast(msg, { at: 'center', bg: bg, ms: ms || 2500 });
+        window.__vidaaUI.toastCenter(msg, { bg: bg, ms: ms || 2500 });
     }
 
     // Red (403) outside the player — toggle the quality indicator, just to

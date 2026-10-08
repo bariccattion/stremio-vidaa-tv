@@ -44,14 +44,7 @@
         row.style.cssText = 'display:flex;gap:8px;justify-content:center;flex-wrap:wrap;';
 
         function mkBtn(label, color) {
-            var b = document.createElement('button');
-            b.textContent = label;
-            b.style.cssText = 'background:' + color + ';color:#fff;border:none;border-radius:8px;' +
-                'padding:8px 14px;font-size:13px;font-family:inherit;font-weight:600;cursor:pointer;';
-            b.setAttribute('tabindex', '0');
-            b.onfocus = function() { this.style.outline = '2px solid #fff'; };
-            b.onblur = function() { this.style.outline = 'none'; };
-            return b;
+            return window.__vidaaUI.button(label, { bg: color, small: true });
         }
 
         var hasNative = false;

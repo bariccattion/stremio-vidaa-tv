@@ -113,17 +113,11 @@
     window.__heavyChoiceCardEnabled = cardEnabled;
 
     function mkButton(label, primary) {
-        var b = document.createElement('button');
-        b.textContent = label;
-        b.style.cssText = 'background:' + (primary ? '#7b5bf5' : 'rgba(255,255,255,0.12)') + ';color:#fff;border:none;border-radius:8px;padding:9px 16px;font-size:13px;font-family:inherit;font-weight:600;cursor:pointer;text-align:center;';
-        b.setAttribute('tabindex', '0');
-        b.onfocus = function() { this.style.outline = '2px solid #a78bfa'; };
-        b.onblur = function() { this.style.outline = 'none'; };
-        return b;
+        return window.__vidaaUI.button(label, { primary: primary, small: true });
     }
 
     function smallToast(text) {
-        RT.toast(text, { at: 'top', ms: 5000 });
+        window.__vidaaUI.toastTop(text);
     }
 
     // ── (A) The non-blocking choice card. ──────────────────────────────────

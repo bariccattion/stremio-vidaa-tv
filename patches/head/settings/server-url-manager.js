@@ -148,7 +148,7 @@
 
     // ── Toast — non-interactive feedback, never traps the remote. ──────────
     function toast(text, sticky) {
-        RT.toast(text, { at: 'top', id: 'dv-server-toast', ms: 5000, sticky: sticky });
+        window.__vidaaUI.toastTop(text, { id: 'dv-server-toast', sticky: sticky });
     }
 
     // ── Confirm-time ping (called by the chunk-edited native dialog right

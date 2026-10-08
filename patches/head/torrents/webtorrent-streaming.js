@@ -35,8 +35,6 @@
     var clientLoaded = false;
     var clientLoading = false;
     var activeTorrent = null;
-    var overlayEl = null;
-    var overlayTimer = null;
     var statsInterval = null;
     var lastInterceptedSrc = '';
     var swRegistration = null;
@@ -147,47 +145,31 @@
     }
 
     // ─── Overlay ──────────────────────────────────────────────────
+    // Transient status card via the UI kernel: text updates reset the
+    // hide clock, stream-end tears it down.
+    var overlay = window.__vidaaUI.transient('webtorrent-overlay',
+        'position:fixed;bottom:60px;left:16px;background:rgba(0,0,0,0.75);color:#fff;font-family:PlusJakartaSans,monospace;font-size:0.8rem;padding:8px 14px;border-radius:8px;z-index:99999;pointer-events:none;transition:opacity 0.3s;opacity:1;max-width:350px;',
+        OVERLAY_HIDE_DELAY, 'opacity 0.3s');
+
     function createOverlay() {
-        if (overlayEl) return overlayEl;
-        overlayEl = document.createElement('div');
-        overlayEl.id = 'webtorrent-overlay';
-        overlayEl.style.cssText = 'position:fixed;bottom:60px;left:16px;background:rgba(0,0,0,0.75);color:#fff;font-family:PlusJakartaSans,monospace;font-size:0.8rem;padding:8px 14px;border-radius:8px;z-index:99999;pointer-events:none;transition:opacity 0.3s;opacity:1;max-width:350px;';
-        overlayEl.textContent = 'Connecting to peers...';
-        document.body.appendChild(overlayEl);
-        scheduleOverlayHide();
-        return overlayEl;
+        overlay.show('Connecting to peers...');
     }
 
     function removeOverlay() {
-        if (overlayEl) {
-            try { overlayEl.remove(); } catch(e) {}
-            overlayEl = null;
-        }
-        if (overlayTimer) { clearTimeout(overlayTimer); overlayTimer = null; }
-    }
-
-    function scheduleOverlayHide() {
-        if (overlayTimer) clearTimeout(overlayTimer);
-        overlayTimer = setTimeout(function() {
-            if (overlayEl) overlayEl.style.opacity = '0';
-        }, OVERLAY_HIDE_DELAY);
+        overlay.remove();
     }
 
     function showOverlay() {
-        if (overlayEl) {
-            overlayEl.style.opacity = '1';
-            scheduleOverlayHide();
-        }
+        overlay.touch();
     }
 
     function updateOverlayStats(torrent) {
-        if (!overlayEl || !torrent) return;
+        if (!overlay.el() || !torrent) return;
         var dlSpeed = (torrent.downloadSpeed / (1024 * 1024)).toFixed(1);
         var peers = torrent.numPeers || 0;
         var progress = Math.round((torrent.progress || 0) * 100);
         var ulSpeed = (torrent.uploadSpeed / (1024 * 1024)).toFixed(1);
-        overlayEl.textContent = '\u2193 ' + dlSpeed + ' MB/s | ' + peers + ' peers | ' + progress + '% buffered' + (parseFloat(ulSpeed) > 0 ? ' | \u2191 ' + ulSpeed + ' MB/s' : '');
-        overlayEl.style.opacity = '1';
+        overlay.show('\u2193 ' + dlSpeed + ' MB/s | ' + peers + ' peers | ' + progress + '% buffered' + (parseFloat(ulSpeed) > 0 ? ' | \u2191 ' + ulSpeed + ' MB/s' : ''));
     }
 
     // ─── Honest Failure Card ──────────────────────────────────────
@@ -230,9 +212,10 @@
             if (!activeTorrent || activeTorrent.destroyed) return;
             if ((activeTorrent.numPeers || 0) > 0) return;
             log('No peers after ' + (PEER_STALL_TIMEOUT / 1000) + 's — torrent is not web-seeded');
-            if (overlayEl) {
-                overlayEl.textContent = 'No peers \u2014 not web-seeded';
-                overlayEl.style.opacity = '1';
+            var stallEl = overlay.el();
+            if (stallEl) {
+                stallEl.textContent = 'No peers \u2014 not web-seeded';
+                stallEl.style.opacity = '1';
             }
             showHonestCard("This torrent has no WebRTC-capable peers \u2014 it isn't web-seeded. Use debrid or a streaming server.");
         }, PEER_STALL_TIMEOUT);
@@ -279,7 +262,8 @@
             ensureStreamingServer(function(err) {
                 if (err) {
                     log('Cannot start streaming server:', err.message);
-                    if (overlayEl) overlayEl.textContent = 'Torrent streaming unavailable';
+                    var errEl = overlay.el();
+                    if (errEl) errEl.textContent = 'Torrent streaming unavailable';
                     showHonestCard('Torrent streaming is not available in this browser. Use debrid or a streaming server.');
                     return;
                 }
@@ -292,7 +276,6 @@
                 }
 
                 createOverlay();
-                overlayEl.textContent = 'Connecting to peers...';
 
                 // Check if torrent already added
                 var existing = client.get(magnetURI);
@@ -337,7 +320,8 @@
         // Progressive streaming — first frame long before the file completes.
         function streamFailed(err) {
             if (err) log('Streaming failed:', err.message);
-            if (overlayEl) overlayEl.textContent = "Can't stream this file";
+            var failEl = overlay.el();
+            if (failEl) failEl.textContent = "Can't stream this file";
             showHonestCard("Can't stream this file in the TV browser (codec/container). Try another source, or use debrid / a streaming server.");
         }
         try {
@@ -389,7 +373,8 @@
 
         torrent.on('done', function() {
             log('Torrent download complete');
-            if (overlayEl) overlayEl.textContent = 'Download complete | Seeding';
+            var doneEl = overlay.el();
+            if (doneEl) doneEl.textContent = 'Download complete | Seeding';
         });
     }
 
