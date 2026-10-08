@@ -76,12 +76,11 @@
     }
 
     function monitorMemory() {
-        if (!performance.memory) return;
-        var used = performance.memory.usedJSHeapSize;
-        var total = performance.memory.jsHeapSizeLimit;
-        if (total > 0 && (used / total) > MEM_WARN_THRESHOLD) {
-            log('WARNING: High memory usage —', Math.round(used / 1048576), 'MB used of',
-                Math.round(total / 1048576), 'MB limit (', Math.round((used / total) * 100), '%)');
+        var h = RT.heapPressure();
+        if (!h) return;
+        if (h.limit > 0 && (h.used / h.limit) > MEM_WARN_THRESHOLD) {
+            log('WARNING: High memory usage —', Math.round(h.used / 1048576), 'MB used of',
+                Math.round(h.limit / 1048576), 'MB limit (', Math.round((h.used / h.limit) * 100), '%)');
         }
     }
 

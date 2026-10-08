@@ -3,40 +3,31 @@
 // source, codec, and release group. This patch intercepts addon subtitle responses,
 // caches full labels, and patches the subtitle picker DOM to show them.
 (function() {
-    var log = window.__vidaaRuntime.logger('subs');
+    var RT = window.__vidaaRuntime;
+    var log = RT.logger('subs');
     var fullSubLabels = {};
 
     // Intercept fetch responses that contain subtitle data from addons
-    var origFetch = window.fetch;
-    window.fetch = function(url, opts) {
-        var result = origFetch.apply(this, arguments);
-        try {
-            if (typeof url === 'string' && url.indexOf('/subtitles/') !== -1) {
-                result.then(function(response) {
-                    var cloned = response.clone();
-                    cloned.json().then(function(data) {
-                        if (data && data.subtitles && Array.isArray(data.subtitles)) {
-                            for (var i = 0; i < data.subtitles.length; i++) {
-                                var sub = data.subtitles[i];
-                                var id = sub.id || sub.url || ('sub_' + i);
-                                var fullLabel = '';
-                                if (sub.filename) fullLabel = sub.filename;
-                                else if (sub.title) fullLabel = sub.title;
-                                else if (sub.lang) fullLabel = sub.lang;
-                                if (fullLabel) {
-                                    // Clean up filename: remove extension, replace dots/underscores
-                                    fullLabel = fullLabel.replace(/\.(srt|ass|ssa|sub|vtt|idx)$/i, '');
-                                    fullSubLabels[id] = fullLabel;
-                                }
-                            }
-                            log('Cached', Object.keys(fullSubLabels).length, 'full subtitle labels');
-                        }
-                    }).catch(function() {});
-                }).catch(function() {});
+    RT.tapJsonFetch(function(u) {
+        return u.indexOf('/subtitles/') !== -1;
+    }, function(data) {
+        if (data && data.subtitles && Array.isArray(data.subtitles)) {
+            for (var i = 0; i < data.subtitles.length; i++) {
+                var sub = data.subtitles[i];
+                var id = sub.id || sub.url || ('sub_' + i);
+                var fullLabel = '';
+                if (sub.filename) fullLabel = sub.filename;
+                else if (sub.title) fullLabel = sub.title;
+                else if (sub.lang) fullLabel = sub.lang;
+                if (fullLabel) {
+                    // Clean up filename: remove extension, replace dots/underscores
+                    fullLabel = fullLabel.replace(/\.(srt|ass|ssa|sub|vtt|idx)$/i, '');
+                    fullSubLabels[id] = fullLabel;
+                }
             }
-        } catch(e) {}
-        return result;
-    };
+            log('Cached', Object.keys(fullSubLabels).length, 'full subtitle labels');
+        }
+    });
 
     // Expose for debugging
     window.__fullSubLabels = fullSubLabels;

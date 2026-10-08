@@ -72,34 +72,24 @@
     }, 1000, { quiet: false });
 
     // Intercept probe responses — log codec info but DON'T block playback
-    var origFetch = window.fetch;
-    window.fetch = function(url, opts) {
-        var result = origFetch.apply(this, arguments);
-        try {
-            if (typeof url === 'string' && url.indexOf('/hlsv2/') !== -1 && url.indexOf('probe') !== -1) {
-                result.then(function(response) {
-                    var cloned = response.clone();
-                    cloned.json().then(function(data) {
-                        if (data && Array.isArray(data.streams)) {
-                            for (var i = 0; i < data.streams.length; i++) {
-                                var s = data.streams[i];
-                                if (s.track === 'video') {
-                                    window.__STREAM_INFO__.videoCodec = s.codec;
-                                    window.__STREAM_INFO__.width = s.width;
-                                    window.__STREAM_INFO__.height = s.height;
-                                    if (s.codec && /^dv(he|h1)/.test(s.codec)) {
-                                        window.__DV_PROFILE7_DETECTED__ = s.codec;
-                                        dvLog('Detected:', s.codec, s.width + 'x' + s.height, '— letting browser attempt native playback');
-                                    }
-                                }
-                            }
-                        }
-                    }).catch(function() {});
-                });
+    RT.tapJsonFetch(function(u) {
+        return u.indexOf('/hlsv2/') !== -1 && u.indexOf('probe') !== -1;
+    }, function(data) {
+        if (data && Array.isArray(data.streams)) {
+            for (var i = 0; i < data.streams.length; i++) {
+                var s = data.streams[i];
+                if (s.track === 'video') {
+                    window.__STREAM_INFO__.videoCodec = s.codec;
+                    window.__STREAM_INFO__.width = s.width;
+                    window.__STREAM_INFO__.height = s.height;
+                    if (s.codec && /^dv(he|h1)/.test(s.codec)) {
+                        window.__DV_PROFILE7_DETECTED__ = s.codec;
+                        dvLog('Detected:', s.codec, s.width + 'x' + s.height, '— letting browser attempt native playback');
+                    }
+                }
             }
-        } catch(e) {}
-        return result;
-    };
+        }
+    });
 
     function showPlaybackWarning() {
         var existing = document.getElementById('dv-warning');

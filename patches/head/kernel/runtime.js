@@ -220,6 +220,40 @@
         return (window.location.hash || '').indexOf('#/player/') === 0;
     };
 
+    // ── heap pressure ───────────────────────────────────────────────
+    // The ONE JS-heap read (Chrome-only performance.memory; null where
+    // unavailable). Compare raw used/limit for threshold exactness.
+    RT.heapPressure = function() {
+        try {
+            var m = performance.memory;
+            if (!m || !m.jsHeapSizeLimit) return null;
+            return { used: m.usedJSHeapSize, limit: m.jsHeapSizeLimit };
+        } catch (e) { return null; }
+    };
+
+    // ── fetch tap ────────────────────────────────────────────────────
+    // Observe JSON responses without disturbing them: the response is
+    // cloned for the tap, the original promise passes through untouched.
+    // Calls chain — a second tap wraps the first's wrapper.
+    RT.tapJsonFetch = function(matchUrl, onData) {
+        var orig = window.fetch;
+        if (typeof orig !== 'function') return;
+        window.fetch = function(url, opts) {
+            var result = orig.apply(this, arguments);
+            try {
+                if (typeof url === 'string' && matchUrl(url)) {
+                    result.then(function(response) {
+                        var cloned = response.clone();
+                        cloned.json().then(function(data) {
+                            try { onData(data); } catch (e) {}
+                        }).catch(function() {});
+                    }).catch(function() {});
+                }
+            } catch (e) {}
+            return result;
+        };
+    };
+
     // ── poller scheduler ──────────────────────────────────────────────
     // The single place that knows the active route and the Quiet Player
     // Mode flag; patches declare their conditions at registration instead
