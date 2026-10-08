@@ -19,10 +19,7 @@
     var MAX_DELAY = 500;
     var STEP = 25; // ms per press
 
-    var audioCtx = null;
-    var sourceNode = null;
-    var delayNode = null;
-    var connectedVideo = null;
+    var delayNode = null;   // our node inside the shared audio graph
     var delayReadout = window.__vidaaUI.transient('audio-delay-overlay',
         'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:rgba(0,0,0,0.8);color:#fff;padding:16px 32px;border-radius:10px;font-family:PlusJakartaSans,sans-serif;font-size:1.3rem;font-weight:700;z-index:99999;pointer-events:none;transition:opacity 0.4s;text-align:center;',
         1500, 'opacity 0.4s');
@@ -59,39 +56,33 @@
     }
 
     function setupDelayNode(video, delayMs) {
-        if (connectedVideo === video && delayNode) {
+        var G = window.__vidaaAudioGraph;
+        if (delayNode && G.hasChain('delay')) {
             // Just update existing delay
             try { delayNode.delayTime.value = delayMs / 1000; } catch(e) {}
             return;
         }
-        // Don't create new context if stereo downmix already claimed it
-        // (createMediaElementSource can only be called once per video)
-        if (connectedVideo === video) return;
-
-        cleanupAudio();
-        try {
-            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-            sourceNode = audioCtx.createMediaElementSource(video);
-            delayNode = audioCtx.createDelay(1.0); // max 1 second
-            delayNode.delayTime.value = delayMs / 1000;
-
-            sourceNode.connect(delayNode);
-            delayNode.connect(audioCtx.destination);
-
-            connectedVideo = video;
+        if (!G.ensure(video)) {
+            log('Failed to apply audio delay: audio graph unavailable');
+            return;
+        }
+        var ok = G.attach('delay', function(ctx) {
+            var d = ctx.createDelay(1.0); // max 1 second
+            d.delayTime.value = delayMs / 1000;
+            delayNode = d;
+            return { in: d, out: d };
+        });
+        if (ok) {
             log('Audio delay applied:', delayMs + 'ms');
-        } catch(e) {
-            log('Failed to apply audio delay:', e.message);
-            // If source already connected (by stereo patch), just log
-            cleanupAudio();
+        } else {
+            delayNode = null;
         }
     }
 
     function cleanupAudio() {
-        if (sourceNode) { try { sourceNode.disconnect(); } catch(e) {} sourceNode = null; }
-        if (delayNode) { try { delayNode.disconnect(); } catch(e) {} delayNode = null; }
-        if (audioCtx) { try { audioCtx.close(); } catch(e) {} audioCtx = null; }
-        connectedVideo = null;
+        // Detach only OUR chain — force-stereo may still be live.
+        window.__vidaaAudioGraph.detach('delay');
+        delayNode = null;
     }
 
     function showOverlay(delayMs) {
@@ -123,17 +114,17 @@
     // Watch for player
     var wasInPlayer = false;
     RT.poll(function() {
-        var hash = window.location.hash || '';
-        var inPlayer = hash.indexOf('#/player/') === 0;
+        var inPlayer = RT.inPlayer();
 
         if (wasInPlayer && !inPlayer) {
-            cleanupAudio();
+            window.__vidaaAudioGraph.teardown();
+            delayNode = null;
             delayReadout.remove();
         }
 
         if (inPlayer && isEnabled() && getDelay() > 0) {
             var video = document.querySelector('video');
-            if (video && video.readyState >= 1 && connectedVideo !== video) {
+            if (video && video.readyState >= 1 && !window.__vidaaAudioGraph.hasChain('delay')) {
                 applyDelay(video);
             }
         }

@@ -12,36 +12,33 @@
     var RT = window.__vidaaRuntime;
     var LS_KEY = 'stremio_force_stereo';
     var log = RT.logger('audio');
-    var audioCtx = null;
-    var sourceNode = null;
-    var connectedVideo = null;
 
     function isEnabled() {
         return RT.store.getBool(LS_KEY, false);
     }
 
     function applyStereoDownmix(video) {
-        if (!video || connectedVideo === video) return;
-        cleanupAudio();
-
-        try {
-            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-            sourceNode = audioCtx.createMediaElementSource(video);
-
+        if (!video) return;
+        var G = window.__vidaaAudioGraph;
+        if (!G.ensure(video)) {
+            log('Failed to apply stereo downmix: audio graph unavailable');
+            return;
+        }
+        var ok = G.attach('stereo', function(ctx) {
             // Force stereo on destination
-            audioCtx.destination.channelCount = 2;
-            audioCtx.destination.channelCountMode = 'explicit';
-            audioCtx.destination.channelInterpretation = 'speakers';
+            ctx.destination.channelCount = 2;
+            ctx.destination.channelCountMode = 'explicit';
+            ctx.destination.channelInterpretation = 'speakers';
 
             // Create a gain node to boost center channel presence
-            var gainNode = audioCtx.createGain();
+            var gainNode = ctx.createGain();
             gainNode.gain.value = 1.15; // slight boost for dialogue clarity
             gainNode.channelCount = 2;
             gainNode.channelCountMode = 'explicit';
             gainNode.channelInterpretation = 'speakers';
 
             // Create a compressor to even out the stereo mix
-            var compressor = audioCtx.createDynamicsCompressor();
+            var compressor = ctx.createDynamicsCompressor();
             compressor.threshold.value = -24;
             compressor.knee.value = 12;
             compressor.ratio.value = 4;
@@ -50,35 +47,15 @@
             compressor.channelCount = 2;
             compressor.channelCountMode = 'explicit';
 
-            sourceNode.connect(gainNode);
             gainNode.connect(compressor);
-            compressor.connect(audioCtx.destination);
-
-            connectedVideo = video;
+            return { in: gainNode, out: compressor };
+        });
+        if (ok) {
             log('Stereo downmix applied — routing through 2ch gain + compressor');
-
-            // Show brief toast
             showToast('Stereo downmix active');
-        } catch(e) {
-            log('Failed to apply stereo downmix:', e.message);
-            cleanupAudio();
-            // Fallback: try just connecting through
-            try {
-                if (sourceNode) sourceNode.connect(audioCtx.destination);
-            } catch(e2) {}
+        } else {
+            log('Failed to apply stereo downmix');
         }
-    }
-
-    function cleanupAudio() {
-        if (sourceNode) {
-            try { sourceNode.disconnect(); } catch(e) {}
-            sourceNode = null;
-        }
-        if (audioCtx) {
-            try { audioCtx.close(); } catch(e) {}
-            audioCtx = null;
-        }
-        connectedVideo = null;
     }
 
     function showToast(msg) {
@@ -94,17 +71,16 @@
     // Watch for player route and video element
     var wasInPlayer = false;
     RT.poll(function() {
-        var hash = window.location.hash || '';
-        var inPlayer = hash.indexOf('#/player/') === 0;
+        var inPlayer = RT.inPlayer();
 
         if (wasInPlayer && !inPlayer) {
             log('Left player — cleaning up audio context');
-            cleanupAudio();
+            window.__vidaaAudioGraph.teardown();
         }
 
         if (inPlayer && isEnabled()) {
             var video = document.querySelector('video');
-            if (video && video.readyState >= 1 && connectedVideo !== video) {
+            if (video && video.readyState >= 1 && !window.__vidaaAudioGraph.hasChain('stereo')) {
                 applyStereoDownmix(video);
             }
         }
@@ -122,7 +98,8 @@
             description: 'Downmix surround sound to stereo with dialogue boost',
             onToggle: function(nowEnabled) {
                 log('Force stereo toggled:', nowEnabled ? 'ON' : 'OFF');
-                if (!nowEnabled) cleanupAudio();
+                // Detach only OUR chain — audio-delay may still be live.
+                if (!nowEnabled) window.__vidaaAudioGraph.detach('stereo');
             }
         });
     }
