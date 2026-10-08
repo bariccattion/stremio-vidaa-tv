@@ -6,9 +6,9 @@
  * classic "5 seconds of playback then buffer" pattern on high-bitrate 4K
  * streams. When this toggle is ON, every poller registered through the
  * runtime scheduler (window.__vidaaRuntime.poll) skips its tick while the
- * user is on a player route — see patch 000. Safety-critical timers (the
- * freeze watchdog) and playback-critical watchers (magnet interception,
- * auto-native handoff, stall monitor, subtitle pickers) deliberately stay
+ * user is on a player route — see kernel/runtime.js. Safety-critical
+ * timers (the freeze watchdog) and playback-critical watchers (magnet
+ * interception, auto-native handoff, stall monitor, subtitle pickers) deliberately stay
  * live and are registered with quiet:false. The core Stremio intervals
  * are left alone.
  *

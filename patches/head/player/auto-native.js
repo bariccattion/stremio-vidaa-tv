@@ -53,9 +53,10 @@
         if (!url) return false;
         if (url.indexOf('blob:') === 0) return false;      // WebTorrent streams (legacy blob)
         if (url.indexOf('magnet:') === 0) return false;    // raw magnet
-        // WebTorrent stream URLs (patch 031): <origin>/webtorrent/... served by
-        // the app service worker — the TV's native player app can't fetch them
-        // (it isn't controlled by the SW), so handing off just breaks playback.
+        // WebTorrent stream URLs (torrents/webtorrent-streaming.js):
+        // <origin>/webtorrent/... served by the app service worker — the TV's
+        // native player app can't fetch them (it isn't controlled by the SW),
+        // so handing off just breaks playback.
         if (url.indexOf('/webtorrent/') !== -1) return false;
         if (url.indexOf('http:') !== 0 && url.indexOf('https:') !== 0) return false;
         if (modeAll()) return true;

@@ -136,7 +136,7 @@
 
     window.__vidaaDiagnostics = { show: show, close: closePanel, sections: sections };
 
-    // ── Torrent section (data via patch 031's existing status API). ────
+    // ── Torrent section (data via the webtorrent-streaming patch's status API). ────
     window.__vidaaRegisterDiagnostic({
         id: 'torrent',
         label: 'Torrent',

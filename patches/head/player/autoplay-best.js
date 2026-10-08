@@ -1,4 +1,4 @@
-// #19 — Auto-Play Best Stream (split from the former 032 god-module; see 032a for the settingsStore)
+// #19 — Auto-Play Best Stream (split from the former 032 god-module; the settingsStore lives in kernel/settings-store.js)
 // Automatically selects the highest-scored stream instead of showing
 // the stream selection screen. Scores by resolution, source, size, seeds.
 // ═══════════════════════════════════════════════════════════════════════

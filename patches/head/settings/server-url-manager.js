@@ -3,9 +3,9 @@
 //
 // The server URL is edited in the NATIVE Settings > Server > Edit URL dialog
 // (a settings.chunk.js edit keeps it a plain field: local value, committed
-// ONCE on Confirm; patch 006 then mirrors the commit to localStorage so
-// future sessions auto-reconnect). This patch adds the extras around that
-// native field — no custom input UI of our own:
+// ONCE on Confirm; kernel/server-url.js then mirrors the commit to
+// localStorage so future sessions auto-reconnect). This patch adds the
+// extras around that native field — no custom input UI of our own:
 //   • "Auto-Detect" button inside the native dialog (the chunk edit calls
 //     window.__serverDialogAutoDetect): sweeps the LAN for a Stremio server
 //     on port 11470 with short per-probe timeouts, fills the field with the
@@ -193,8 +193,9 @@
 
     // ── Auto-Detect (called by the "Auto-Detect" button in the native
     // dialog). Fills the dialog's field with the winner via input.value —
-    // the VIDAA keyboard fix (patch 003) fires the synthetic input event, so
-    // the dialog's local value mirrors it; the user still presses Confirm. ──
+    // the VIDAA keyboard fix (platform/keyboard-fix.js) fires the synthetic
+    // input event, so the dialog's local value mirrors it; the user still
+    // presses Confirm. ──
     var activeScan = null;
     window.__serverDialogAutoDetect = function(opts) {
         if (activeScan) { activeScan.cancel(); return; }

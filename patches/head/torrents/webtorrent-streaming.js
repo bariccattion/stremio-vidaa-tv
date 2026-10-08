@@ -87,8 +87,8 @@
 
     // ─── Service Worker Streaming Server ──────────────────────────
     // file.streamTo/streamURL require client.createServer({ controller: reg })
-    // with the app shell's service worker registration (patch 004 registers
-    // './sw.js'; the webtorrent worker is importScripts'd inside it).
+    // with the app shell's service worker registration (platform/sw-register.js
+    // registers './sw.js'; the webtorrent worker is importScripts'd inside it).
     function ensureStreamingServer(cb) {
         if (!navigator.serviceWorker) {
             cb(new Error('ServiceWorker unsupported in this browser'));

@@ -1,5 +1,5 @@
 // @ts-check
-// Tests for the server URL configuration (patch 043) — integrated with the
+// Tests for the server URL configuration (settings/server-url-manager.js) — integrated
 // NATIVE Settings > Server > Edit URL dialog instead of custom input UI:
 //   • the dialog is a plain field (chunk edit): local value, committed once
 //     on Confirm, then mirrored to localStorage by the serverUrl module (001) so future
@@ -31,7 +31,7 @@ function mockServer(page, hostPattern) {
   ]);
 }
 
-test.describe('Native Edit URL dialog integration (patch 043)', () => {
+test.describe('Native Edit URL dialog integration (settings/server-url-manager.js)', () => {
   test('custom overlay is removed; dialog hooks + engine are exposed', async ({ page }) => {
     await page.goto('/');
     await page.waitForTimeout(1500);
@@ -63,7 +63,7 @@ test.describe('Native Edit URL dialog integration (patch 043)', () => {
     // Custom overlay entry point fully gone.
     expect(src).not.toContain('__showServerUrlManager');
     expect(indexSrc).not.toContain('__showServerUrlManager');
-    // The Vidaa TV section is a thin chunk seam delegating to patch 032g;
+    // The Vidaa TV section is a thin chunk seam delegating to settings/settings-ui.js;
     // its entries live in the inlined patch layer.
     expect(src).toContain('__vidaaSettingsRows(g, p)');
     expect(indexSrc).toContain('Quiet Player Mode');

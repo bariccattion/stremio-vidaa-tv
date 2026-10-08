@@ -354,7 +354,7 @@ test.describe('Native VIDAA settings and handoff', () => {
       ]);
       return { bundle, index };
     });
-    // The chunk edit is a thin seam: the section + delegation to patch 032g.
+    // The chunk edit is a thin seam: the section + delegation to settings/settings-ui.js.
     expect(sources.bundle).toContain('label: "Vidaa TV"');
     expect(sources.bundle).toContain('__vidaaSettingsRows(g, p)');
     // The rows themselves are built from the settingsStore registry by

@@ -27,12 +27,20 @@ npm is the package manager; Node 22; no linter/formatter is configured.
 
 ## Where changes go
 
-- New behavior: add `patches/head/NNN-name.js` (next free number; scripts are
-  inlined into index.html in filename order). ES5 only — `var`, callbacks, no
-  arrow functions or async — because VIDAA browsers are old engines. Each patch
-  is a self-contained IIFE with a banner comment explaining its purpose;
-  coordinate with other patches through `window.__*` globals and feature-check
-  them before use so patches stay independently loadable.
+- New behavior: add `patches/head/<area>/<name>.js` — `kernel/` (the shared
+  toolbox: reusable helpers exposed as `window.__vidaa*` globals), `platform/`
+  (TV lifecycle & VIDAA integration), `player/`, `subtitles/`, `audio/`,
+  `torrents/`, `library/`, `settings/`, or `diagnostics/`. Scripts are inlined
+  into index.html in **template order**: `patches/index.template.html` is the
+  manifest, so add the `{{patches/head/...}}` placeholder line there too (the
+  build fails if a patch file exists that the template doesn't inline, or if a
+  `kernel/` patch would inline after a feature patch). ES5 only — `var`,
+  callbacks, no arrow functions or async — because VIDAA browsers are old
+  engines. Each patch is a self-contained IIFE with a banner comment
+  explaining its purpose; coordinate with other patches through `window.__*`
+  globals and feature-check them before use so patches stay independently
+  loadable. Shared code goes into `kernel/` (consume `__vidaaRuntime`,
+  `__vidaaKeys`, etc.) — never copy-paste a helper between feature patches.
 - Changes inside the bundled minified app: a `{find, replace}` op in
   `patches/chunk-edits/*.json`. The `find` string must occur exactly once or
   the build fails; preserve the surrounding webpack-mangled identifiers in
@@ -46,7 +54,7 @@ npm is the package manager; Node 22; no linter/formatter is configured.
 
 Three dialects coexist on purpose:
 
-- `patches/head/*.js` and templates: ES5, 4-space indent, defensive try/catch,
+- `patches/head/**/*.js` and templates: ES5, 4-space indent, defensive try/catch,
   feature-detect old APIs, `localStorage` keys prefixed `stremio_`.
 - `scripts/*.mjs`: modern Node ESM, `node:`-prefixed imports, 2-space indent.
 - `tests/*.spec.js`: CommonJS with `// @ts-check`, `test.describe` blocks

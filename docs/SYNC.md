@@ -10,16 +10,22 @@ upstream/                  replaceable Stremio artifacts (never hand-edit)
   translations/            47 per-language translation chunks
 UPSTREAM.lock.json         version + source URL + SHA-256 of every upstream file
 patches/                   everything that makes this a VIDAA build
-  head/000-*.js … 044-*.js ordered patch scripts, inlined into index.html at build
-                                (000 is the __vidaaRuntime shared toolbox — toast,
-                                logger, store, fetchTimeout, probeServer, when,
-                                onRegistryReady, serverConfigured, poll; 001 is
-                                the serverUrl module owning the streaming server
-                                URL lifecycle: ?server= ingest, boot push-to-core,
-                                core→localStorage mirror, health monitor + heal;
-                                002b is the vidaaKeys dispatcher — the ONE remote
-                                keydown listener, with name→code map, route/when
-                                gates, priorities, and sequence combos)
+  head/                    patch scripts, inlined into index.html at build
+    kernel/                the shared toolbox: runtime.js (the __vidaaRuntime
+                           kernel — toast, logger, store, fetchTimeout,
+                           probeServer, when, onRegistryReady,
+                           serverConfigured, poll), server-url.js (the
+                           serverUrl module owning the streaming server URL
+                           lifecycle: ?server= ingest, boot push-to-core,
+                           core→localStorage mirror, health monitor + heal),
+                           keys.js (the vidaaKeys dispatcher — the ONE remote
+                           keydown listener, with name→code map, route/when
+                           gates, priorities, and sequence combos), esc.js,
+                           native-player.js, device.js, settings-store.js,
+                           diagnostics-registry.js
+    platform/ player/ subtitles/ audio/ torrents/ library/ settings/
+    diagnostics/           feature patches by domain; index.template.html
+                           (not filenames) fixes the inline order
   chunk-edits/*.json       surgical {find, replace} ops on 3 pristine chunks
   custom/core.chunk.js     the worker-factory shim that swaps in the v5 engine
   index.template.html      page skeleton ({{VERSION}}, {{COMMIT}} stamped at build)
@@ -55,7 +61,8 @@ node scripts/sync-core.mjs --version 0.64.1
 # 2. Translations (prints a per-language merge report)
 node scripts/sync-translations.mjs
 
-# 3. WebTorrent trackers (rewrites the TRACKERS array in patch 031; only the
+# 3. WebTorrent trackers (rewrites the TRACKERS array in
+#    patches/head/torrents/webtorrent-streaming.js; only the
 #    repo's wss:// websocket list applies — udp/http announce is browser-unusable)
 npm run sync-trackers
 
@@ -63,7 +70,7 @@ npm run sync-trackers
 node scripts/build.mjs --update-lock
 
 # 5. Verify
-npx playwright test            # 121 tests against the freshly built app/
+npx playwright test            # 143 tests against the freshly built app/
 node scripts/probe-core.mjs    # boots the site headlessly; confirms the WASM core initializes
 node scripts/probe-server.mjs  # boots with a mock streaming server; confirms ?server= sync,
                                 # StreamingServer.Reload, and the core's server client (all
@@ -87,29 +94,31 @@ works, and pin that in `UPSTREAM.lock.json`. Git history holds every predecessor
 
 ## Everyday maintenance
 
-- **Add a patch:** create `patches/head/044-my-patch.js` and add its
-  `{{patches/head/...}}` line to `patches/index.template.html` (the build fails
-  if a patch file exists that the template doesn't inline). Head scripts run
-  before the app's deferred scripts, exactly like the old monolithic
-  `index.html` did. Consume `window.__vidaaRuntime` (toast, logger, store,
-  fetchTimeout, probeServer, onRegistryReady, serverConfigured, poll) instead
-  of re-implementing those utilities — log via `var log = RT.logger('my-patch')`
-  so every message carries the uniform `[vidaa:my-patch]` prefix, and register
-  recurring timers through `RT.poll(fn, ms, { route, quiet })` so Quiet Player
-  Mode can silence them (pass `quiet: false` only for safety- or
-  playback-critical pollers).
+- **Add a patch:** create `patches/head/<area>/<name>.js` (kernel/ for shared
+  toolbox modules, a domain folder for features) and add its
+  `{{patches/head/...}}` line to `patches/index.template.html` — the template
+  is the manifest and fixes the inline order (the build fails if a patch file
+  exists that the template doesn't inline, or if a kernel/ patch would inline
+  after a feature patch). Head-region scripts run before the app's deferred
+  scripts, exactly like the old monolithic `index.html` did. Consume
+  `window.__vidaaRuntime` (toast, logger, store, fetchTimeout, probeServer,
+  onRegistryReady, serverConfigured, poll) instead of re-implementing those
+  utilities — log via `var log = RT.logger('my-patch')` so every message
+  carries the uniform `[vidaa:my-patch]` prefix, and register recurring timers
+  through `RT.poll(fn, ms, { route, quiet })` so Quiet Player Mode can silence
+  them (pass `quiet: false` only for safety- or playback-critical pollers).
 - **Add a settings toggle:** register an item with
   `window.__registerVidaaSettingsItem({ id, type: 'toggle', label,
   description, lsKey, defaultValue, onToggle })` — that is the whole job.
-  The settingsStore (032a) owns the registry, the settings UI (032g) renders
-  the Vidaa TV section rows from it, and schema-derived resets (Safe Mode)
-  pick up the `defaultValue` automatically. The settings.chunk.js edit is a
-  thin seam that only delegates to `window.__vidaaSettingsRows(g, p)`; never
-  hand-edit UI into the chunk JSON.
+  The settingsStore (kernel/settings-store.js) owns the registry, the settings
+  UI (settings/settings-ui.js) renders the Vidaa TV section rows from it, and
+  schema-derived resets (Safe Mode) pick up the `defaultValue` automatically.
+  The settings.chunk.js edit is a thin seam that only delegates to
+  `window.__vidaaSettingsRows(g, p)`; never hand-edit UI into the chunk JSON.
 - **Add a diagnostics section:** register with
   `window.__vidaaRegisterDiagnostic({ id, label, render(bodyEl) })` — the
-  unified panel (044) renders it as a tab next to Device / Debug Blob /
-  Playback / Stream Stats / Torrent. Legacy entry points
+  unified panel (kernel/diagnostics-registry.js) renders it as a tab next to
+  Device / Debug Blob / Playback / Stream Stats / Torrent. Legacy entry points
   (`__showVidaaDiagnostics`, `__showPlaybackDiagnostics`,
   `__showVidaaDiagnostic`, the Green→Red combo) all open the same panel.
 - **Bind a remote key:** register with

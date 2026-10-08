@@ -1,4 +1,4 @@
-// #18 — Audio Delay Adjustment (split from the former 032 god-module; see 032a for the settingsStore)
+// #18 — Audio Delay Adjustment (split from the former 032 god-module; the settingsStore lives in kernel/settings-store.js)
 // Adjustable audio offset for soundbars/AV receivers.
 // Uses DelayNode in Web Audio API when positive, or shifts playback
 // timing when negative. Range: -500ms to +500ms.

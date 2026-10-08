@@ -1,4 +1,4 @@
-// #17 — Force Stereo Downmix (split from the former 032 god-module; see 032a for the settingsStore)
+// #17 — Force Stereo Downmix (split from the former 032 god-module; the settingsStore lives in kernel/settings-store.js)
 // Downmixes surround audio to stereo using Web Audio API.
 // Boosts center channel for dialogue clarity on basic speakers.
 // ═══════════════════════════════════════════════════════════════════════

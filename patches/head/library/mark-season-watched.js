@@ -1,4 +1,4 @@
-// #20 — Mark Season as Watched (split from the former 032 god-module; see 032a for the settingsStore)
+// #20 — Mark Season as Watched (split from the former 032 god-module; the settingsStore lives in kernel/settings-store.js)
 // Injects a "Mark Season Watched" button near the season selector
 // on detail pages. Dispatches MarkAsWatched for each episode.
 // ═══════════════════════════════════════════════════════════════════════

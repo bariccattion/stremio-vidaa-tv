@@ -1,4 +1,4 @@
-// #21 — Subtitle Sync Drift Auto-Correction (split from the former 032 god-module; see 032a for the settingsStore)
+// #21 — Subtitle Sync Drift Auto-Correction (split from the former 032 god-module; the settingsStore lives in kernel/settings-store.js)
 // Tracks manual subtitle delay adjustments, calculates drift rate,
 // and applies progressive correction automatically.
 // ═══════════════════════════════════════════════════════════════════════

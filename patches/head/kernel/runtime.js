@@ -1,5 +1,5 @@
 // ═══════════════════════════════════════════════════════════════════════
-// VIDAA runtime kernel (patch 000) — the ONE shared toolbox for all patches.
+// VIDAA runtime kernel — the ONE shared toolbox for all patches.
 // ═══════════════════════════════════════════════════════════════════════
 // Every patch below this one used to ship its own copy of the same utilities
 // (11 toast builders, 5 fetch-with-timeout ladders, 10 isEnabled() wrappers
@@ -216,16 +216,16 @@
     // ── poller scheduler ──────────────────────────────────────────────
     // The single place that knows the active route and the Quiet Player
     // Mode flag; patches declare their conditions at registration instead
-    // of re-checking them inline. This is the contract patch 039 promised
-    // and never delivered (039 was a no-op and is deleted).
+    // of re-checking them inline. This is the contract the deleted 039 patch
+    // promised and never delivered (it was a no-op).
     //
     // Semantics:
     //   route 'player'    — tick only on #/player/ routes
     //   route 'nonplayer' — tick only off the player route
     //   quiet (default)   — skip ticks while window.__QUIET_PLAYER_ACTIVE__
-    //                       (set by patch 037: opt-in toggle, in-player only).
-    //                       Background maintenance goes silent; pollers that
-    //                       must never pause (freeze watchdog, playback-
+    //                       (set by player/quiet-mode.js: opt-in toggle,
+    //                       in-player only). Background maintenance goes silent;
+    //                       pollers that must never pause (freeze watchdog, playback-
     //                       critical feature watchers) pass quiet:false.
     //
     // Route semantics intentionally use hash PREFIX matching ('#/player/…'),

@@ -293,11 +293,11 @@ These were already in the build before the above patches:
 │  47 translations, assets (untouched)     │
 ├──────────────────────────────────────────┤
 │  VIDAA Patch Layer (patches/)            │
-│  42 ordered scripts inlined into         │
-│  index.html at build + 3 surgical chunk  │
-│  edits stored as data — server sync,     │
-│  codec detection, VIDAA API, launcher,   │
-│  remote keys, QoL toggles, diagnostics   │
+│  47 scripts (kernel/ + domain folders)   │
+│  inlined into index.html at build +      │
+│  3 surgical chunk edits stored as data — │
+│  server sync, codec detection, VIDAA API,│
+│  launcher, remote keys, QoL, diagnostics │
 ├──────────────────────────────────────────┤
 │  stremio-core-web 0.64.1 WASM engine     │
 │  upstream/core-web — worker bundled from │
@@ -316,7 +316,7 @@ These were already in the build before the above patches:
 └──────────────────────────────────────────┘
 ```
 
-The patch layer sits between the original UI and the core engine. All patches are isolated in `patches/head/` as self-contained scripts (inlined into `index.html` at build time, in order), with three surgical edits to bundled chunks expressed as data in `patches/chunk-edits/` (error handling and transcoding hooks). The WASM binary and original UI chunks are untouched; every upstream file is verified by SHA-256 against `UPSTREAM.lock.json` on each build.
+The patch layer sits between the original UI and the core engine. All patches live in `patches/head/` — a `kernel/` folder of shared toolbox modules (`__vidaaRuntime`, `__vidaaKeys`, the serverUrl module, …) plus domain folders (`player/`, `subtitles/`, `platform/`, …) of self-contained scripts — inlined into `index.html` at build time in the order fixed by `patches/index.template.html`, with three surgical edits to bundled chunks expressed as data in `patches/chunk-edits/` (error handling and transcoding hooks). The WASM binary and original UI chunks are untouched; every upstream file is verified by SHA-256 against `UPSTREAM.lock.json` on each build.
 
 ## Development & Syncing
 
@@ -325,7 +325,7 @@ The repo separates **replaceable Stremio artifacts** (`upstream/`, hash-locked) 
 ```bash
 node scripts/sync-core.mjs --version <x.y.z>   # engine from npm
 node scripts/sync-translations.mjs             # translations from Stremio/stremio-translations
-npm run build && npx playwright test           # rebuild + 117-test verification
+npm run build && npx playwright test           # rebuild + 143-test verification
 ```
 
 See [docs/SYNC.md](docs/SYNC.md) for the full runbook, including how to bisect an engine version and how to add patches. Note: the compiled Theater v1.9.2 UI itself is an unpublished Stremio TV build — there is no newer public version of it to sync (the public Stremio/stremio-web repo is a different, mouse-first app).
