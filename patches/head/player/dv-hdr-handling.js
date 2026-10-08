@@ -132,8 +132,7 @@
         var actionsDiv = overlay.querySelector('#dv-actions');
 
         // Native Player button (VIDAA only)
-        var hasNativePlayer = false;
-        try { hasNativePlayer = typeof omi_platform !== 'undefined' && typeof omi_platform.sendPlatformMessage === 'function'; } catch(e) {}
+        var hasNativePlayer = window.__hasNativePlayer ? window.__hasNativePlayer() : false;
 
         if (hasNativePlayer) {
             var nativeBtn = document.createElement('button');

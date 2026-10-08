@@ -107,15 +107,12 @@
                 }
                 log('2+ early stalls, handing off to native player');
                 try { video.pause(); } catch(e) {}
-                // H5: act on the VERIFIED result. The launcher resolves a boolean
-                // reflecting whether the native app actually foregrounded. On
-                // failure we MUST un-pause the browser video (best-effort resume)
-                // and surface honest advice — never leave a frozen, paused player.
-                Promise.resolve(window.__launchNativePlayer(video.currentSrc || video.src)).then(function(opened) {
-                    if (!opened && typeof window.__recoverAfterFailedHandoff === 'function') {
-                        window.__recoverAfterFailedHandoff(video);
-                    }
-                });
+                // H5: the wrapper acts on the VERIFIED result — on failure it
+                // best-effort resumes the browser video and advises; never a
+                // frozen, paused player.
+                if (window.__handoffAndRecover) {
+                    window.__handoffAndRecover(video, video.currentSrc || video.src);
+                }
             }
         }
         video.addEventListener('waiting', onStall);

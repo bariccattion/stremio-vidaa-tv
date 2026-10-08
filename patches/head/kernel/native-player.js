@@ -42,6 +42,7 @@
     function hasNative() {
         try { return typeof omi_platform !== 'undefined' && typeof omi_platform.sendPlatformMessage === 'function'; } catch(e) { return false; }
     }
+    window.__hasNativePlayer = hasNative;
 
     function guessNativeMimeType(url) {
         var path = '';
@@ -192,6 +193,17 @@
         toast.appendChild(btn);
         document.body.appendChild(toast);
         setTimeout(function() { if (toast.parentNode) toast.remove(); }, 9000);
+    };
+
+    // Verified-launch wrapper for the call sites that share the
+    // "launch, and if the native app did NOT open, best-effort resume the
+    // browser video + advise" dance. onOpened(opened) always runs so callers
+    // can do their own follow-up (clear state, dismiss UI).
+    window.__handoffAndRecover = function(video, src, onOpened) {
+        Promise.resolve(window.__launchNativePlayer(src)).then(function(opened) {
+            if (!opened) window.__recoverAfterFailedHandoff(video);
+            if (onOpened) onOpened(!!opened);
+        });
     };
 
     // The ONE launcher. Returns Promise<boolean> = verified opened?

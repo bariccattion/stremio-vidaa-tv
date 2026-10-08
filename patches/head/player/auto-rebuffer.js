@@ -43,28 +43,21 @@
             return window.__vidaaUI.button(label, { bg: color, small: true });
         }
 
-        var hasNative = false;
-        try { hasNative = typeof omi_platform !== 'undefined' && typeof omi_platform.sendPlatformMessage === 'function'; } catch(e) {}
+        var hasNative = window.__hasNativePlayer ? window.__hasNativePlayer() : false;
 
         if (hasNative) {
             var nativeBtn = mkBtn('Native Player', '#7b5bf5');
             nativeBtn.onclick = function() {
-                if (!window.__launchNativePlayer) { toast.remove(); return; }
+                if (!window.__handoffAndRecover) { toast.remove(); return; }
                 // H5: keep the toast until we know whether the native player
-                // actually opened. On failure, resume browser playback + advise.
+                // actually opened. On failure, the wrapper resumes browser
+                // playback + advises.
                 nativeBtn.textContent = 'Trying…';
                 nativeBtn.disabled = true;
                 var v = (typeof video !== 'undefined' && video) ? video : document.querySelector('video');
                 var src = v ? v.currentSrc || v.src : null;
-                Promise.resolve(window.__launchNativePlayer(src)).then(function(opened) {
-                    if (opened) {
-                        toast.remove();
-                    } else {
-                        toast.remove();
-                        if (typeof window.__recoverAfterFailedHandoff === 'function') {
-                            window.__recoverAfterFailedHandoff(v);
-                        }
-                    }
+                window.__handoffAndRecover(v, src, function() {
+                    toast.remove();
                 });
             };
             row.appendChild(nativeBtn);

@@ -31,9 +31,7 @@
     function modeAll() { return RT.store.getBool(LS_KEY_ALL, false); }
     function modeMkvOnly() { return RT.store.getBool(LS_KEY_MKV, false); }
 
-    function hasNative() {
-        try { return typeof omi_platform !== 'undefined' && typeof omi_platform.sendPlatformMessage === 'function'; } catch(e) { return false; }
-    }
+    function hasNative() { return !!window.__hasNativePlayer && window.__hasNativePlayer(); }
 
     function isMkvUrl(url) {
         if (!url) return false;
@@ -85,18 +83,11 @@
 
         // Pause the browser player to free the decoder before we launch the native one.
         try { video.pause(); } catch(e) {}
-        if (window.__launchNativePlayer) {
-            // H5: act on the verified result. If the native player did not
-            // actually open, un-pause and resume browser playback so we never
-            // leave the user with a silently-frozen paused video. Also allow
-            // re-attempt on the next src by clearing lastHandedOffUrl.
-            Promise.resolve(window.__launchNativePlayer(src)).then(function(opened) {
-                if (!opened) {
-                    lastHandedOffUrl = '';
-                    if (typeof window.__recoverAfterFailedHandoff === 'function') {
-                        window.__recoverAfterFailedHandoff(video);
-                    }
-                }
+        // H5: act on the verified result — the wrapper un-pauses and advises
+        // on failure; allow re-attempt on the next src by clearing the memo.
+        if (window.__handoffAndRecover) {
+            window.__handoffAndRecover(video, src, function(opened) {
+                if (!opened) lastHandedOffUrl = '';
             });
         }
     }, 1500, { quiet: false });
