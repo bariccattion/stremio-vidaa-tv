@@ -4,3 +4,4 @@ app/
 test-results/
 playwright-report/
 __pycache__/
+tmp-rebaseline/
