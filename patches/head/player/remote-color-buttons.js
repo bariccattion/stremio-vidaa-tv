@@ -47,8 +47,7 @@
     // player and can be stale even when the server is reachable.
     window.__vidaaKeys.on('blue', function() {
         var ph = window.location.hash || '';
-        var srvUrl = window.__STREMIO_SERVER_URL__ || '';
-        var serverReady = srvUrl && srvUrl !== 'http://127.0.0.1:11470';
+        var serverReady = RT.serverConfigured();
         if (!serverReady) {
             showToast('Force transcode needs a streaming server.\nCheck Settings > Server.', 'rgba(180,60,60,0.92)', 3500);
             return;
@@ -107,6 +106,6 @@
         setTimeout(function() { if (info) info.remove(); }, 10000);
     }, {
         route: 'player',
-        when: function() { return localStorage.getItem('stremio_stream_stats') === 'false'; }
+        when: function() { return RT.store.get('stremio_stream_stats', null) === 'false'; }
     });
 })();

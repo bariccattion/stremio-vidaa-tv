@@ -1,11 +1,8 @@
 // #17 — Force Stereo Downmix (split from the former 032 god-module; the settingsStore lives in kernel/settings-store.js)
-// Downmixes surround audio to stereo using Web Audio API.
-// Boosts center channel for dialogue clarity on basic speakers.
-// ═══════════════════════════════════════════════════════════════════════
-// #17 — Force Stereo Downmix
-// Downmixes surround audio to stereo using Web Audio API.
-// Boosts center channel for dialogue clarity on basic speakers.
-// ═══════════════════════════════════════════════════════════════════════
+// Downmixes surround audio to stereo using Web Audio API: a slight gain
+// boost plus compression makes dialogue easier to hear on basic TV speakers
+// (the boost applies to the whole mix — a plain GainNode cannot target the
+// center channel alone).
 (function() {
     'use strict';
 
@@ -15,6 +12,18 @@
 
     function isEnabled() {
         return RT.store.getBool(LS_KEY, false);
+    }
+
+    // The chain factory forces the context destination to 2ch; undo it when
+    // our chain goes away so delay-only users keep the natural channel mix
+    // (the destination mutation otherwise persists after detach — P0.9).
+    function restoreDestination() {
+        var c = window.__vidaaAudioGraph.context && window.__vidaaAudioGraph.context();
+        if (!c) return;
+        try {
+            c.destination.channelCountMode = 'max';
+            c.destination.channelInterpretation = 'speakers';
+        } catch(e) {}
     }
 
     function applyStereoDownmix(video) {
@@ -30,9 +39,9 @@
             ctx.destination.channelCountMode = 'explicit';
             ctx.destination.channelInterpretation = 'speakers';
 
-            // Create a gain node to boost center channel presence
+            // Loudness boost + compression for dialogue clarity on basic speakers
             var gainNode = ctx.createGain();
-            gainNode.gain.value = 1.15; // slight boost for dialogue clarity
+            gainNode.gain.value = 1.15;
             gainNode.channelCount = 2;
             gainNode.channelCountMode = 'explicit';
             gainNode.channelInterpretation = 'speakers';
@@ -79,8 +88,13 @@
         }
 
         if (inPlayer && isEnabled()) {
-            var video = document.querySelector('video');
-            if (video && video.readyState >= 1 && !window.__vidaaAudioGraph.hasChain('stereo')) {
+            var video = (window.__vidaaRuntime.dom && window.__vidaaRuntime.dom.currentVideo)
+                ? window.__vidaaRuntime.dom.currentVideo()
+                : document.querySelector('video');
+            // Re-apply on engine video swaps too, not just missing chains:
+            // a chain bound to a detached <video> processes silence (P0.9).
+            if (video && video.readyState >= 1
+                && (window.__vidaaAudioGraph.boundVideo() !== video || !window.__vidaaAudioGraph.hasChain('stereo'))) {
                 applyStereoDownmix(video);
             }
         }
@@ -99,7 +113,10 @@
             onToggle: function(nowEnabled) {
                 log('Force stereo toggled:', nowEnabled ? 'ON' : 'OFF');
                 // Detach only OUR chain — audio-delay may still be live.
-                if (!nowEnabled) window.__vidaaAudioGraph.detach('stereo');
+                if (!nowEnabled) {
+                    window.__vidaaAudioGraph.detach('stereo');
+                    restoreDestination();
+                }
             }
         });
     }

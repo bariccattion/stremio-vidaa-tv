@@ -30,7 +30,9 @@
     }
     applyQuiet();
     window.addEventListener('hashchange', applyQuiet);
-    setInterval(applyQuiet, 2000);
+    // Scheduler-owned since P1.4, quiet:false — this IS the quiet machinery;
+    // it must never silence itself.
+    RT.poll(applyQuiet, 2000, { quiet: false });
 
     // Register Settings toggle.
     RT.onRegistryReady(function() {

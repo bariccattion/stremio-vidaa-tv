@@ -1,4 +1,7 @@
-// Splash screen — remove when core is ready
+// Splash screen — remove when core is ready.
+// Scheduler-owned timers since P1.4 (quiet:false — the boot signal must
+// never be silenced; Quiet Mode can only be active on the player route
+// anyway, which is not where a splash lives).
 (function() {
     var RT = window.__vidaaRuntime;
     function coreUsable() {
@@ -7,12 +10,12 @@
     }
     var bar = document.getElementById('splash-bar');
     var progress = 0;
-    var tick = setInterval(function() {
+    var tick = RT.poll(function() {
         progress = Math.min(progress + Math.random() * 15, 90);
         if (bar) bar.style.width = progress + '%';
-    }, 400);
+    }, 400, { quiet: false });
     var safetyTimer = null;
-    var check = setInterval(function() {
+    var check = RT.poll(function() {
         if (coreUsable()) {
             clearInterval(check);
             clearInterval(tick);
@@ -27,7 +30,7 @@
                 }
             }, 200);
         }
-    }, 300);
+    }, 300, { quiet: false });
     // Safety: remove after 30s regardless
     safetyTimer = setTimeout(function() {
         clearInterval(check);

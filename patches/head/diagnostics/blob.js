@@ -101,7 +101,6 @@
             'stremio_720p_mode',
             'stremio_force_stereo',
             'stremio_audio_delay_enabled',
-            'stremio_sub_drift_fix',
             'stremio_webtorrent_enabled',
             'stremio_low_memory',
             'stremio_auto_rebuffer',
@@ -176,8 +175,8 @@
         };
 
         return Promise.resolve().then(function() {
-            if (!window.core || typeof window.core.getState !== 'function') return diag;
-            return window.core.getState('player').then(function(state) {
+            if (!(window.__vidaaRuntime.core && window.__vidaaRuntime.core.getState)) return diag;
+            return window.__vidaaRuntime.core.getState('player').then(function(state) {
                 if (!state) return diag;
                 diag.playerState = {
                     paused: safeRead(function() { return state.paused; }, null),

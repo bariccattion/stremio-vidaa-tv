@@ -162,7 +162,16 @@ function installMockCore(page, state = {}, opts = {}) {
       window.__mockCoreState = state;
       window.__mockDispatchLog = [];
       window.__realCore = null;
-      window.__setMockCore = function (model, value) { window.__mockCoreState[model] = value; };
+      window.__setMockCore = function (model, value) {
+        window.__mockCoreState[model] = value;
+        // Behave like the real core: a state change emits a NewState event
+        // naming the model (RT.core.onState subscribers depend on this).
+        try {
+          if (typeof window.onCoreEvent === 'function') {
+            window.onCoreEvent({ name: 'NewState', args: { model: model } });
+          }
+        } catch (e) {}
+      };
       window.__mockCore = {
         getState: function (model) {
           const v = window.__mockCoreState[model];

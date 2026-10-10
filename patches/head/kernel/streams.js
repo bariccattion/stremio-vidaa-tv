@@ -42,6 +42,18 @@
         return (bytes / 1048576).toFixed(1) + ' MB/s';
     };
     S.formatMB = function(bytes) { return (bytes / 1048576).toFixed(1) + ' MB'; };
+    // Human file size: GB with two decimals below 10, one above (stats v2).
+    S.formatGB = function(bytes) {
+        if (bytes == null || !isFinite(bytes)) return 'unknown';
+        var gb = bytes / 1073741824;
+        if (gb < 1) return (bytes / 1048576).toFixed(0) + ' MB';
+        return gb.toFixed(gb < 10 ? 2 : 1) + ' GB';
+    };
+    // Bits per second → Mbps (avg-bitrate estimates in the stats overlay).
+    S.formatMbps = function(bitsPerSec) {
+        if (bitsPerSec == null || !isFinite(bitsPerSec) || bitsPerSec <= 0) return null;
+        return (bitsPerSec / 1000000).toFixed(1) + ' Mbps';
+    };
 
     // Seconds of buffer ahead of the playhead (0 when unknown).
     S.bufferHealth = function(video) {

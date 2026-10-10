@@ -109,25 +109,30 @@
 
     // Show install banner after app loads (delay to let splash screen clear)
     setTimeout(function() {
+        var UI = window.__vidaaUI;
+
+        // The launcher entry must point at THIS deployment (origin + site
+        // dir), not a hardcoded canonical URL — mirrors and self-hosts
+        // otherwise install a shortcut to someone else's site (P0.11).
+        var appUrl = window.location.origin + window.location.pathname.replace(/[^/]*$/, '');
+        var iconUrl = appUrl + 'icon.png';
+        var appId = 'stremio-vidaa';
+
         var banner = document.createElement('div');
         banner.id = 'install-banner';
+        // nav-area + nav-id register the banner and its buttons with the
+        // app's spatial-navigation engine — without them the remote could
+        // never focus the buttons (P0.11).
+        banner.setAttribute('nav-area', 'install-banner');
         banner.style.cssText = 'position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:rgba(123,91,245,0.95);color:white;padding:14px 28px;border-radius:12px;z-index:99999;font-family:PlusJakartaSans,sans-serif;font-size:1rem;display:flex;align-items:center;gap:16px;backdrop-filter:blur(8px);box-shadow:0 4px 20px rgba(0,0,0,0.4);';
 
         var text = document.createElement('span');
         text.textContent = 'Add Stremio to your TV launcher?';
         banner.appendChild(text);
 
-        var btn = document.createElement('button');
-        btn.textContent = 'Install';
-        btn.style.cssText = 'background:white;color:#7b5bf5;border:none;padding:8px 20px;border-radius:8px;font-weight:700;font-size:0.95rem;cursor:pointer;font-family:inherit;';
-        btn.setAttribute('tabindex', '0');
-        btn.onfocus = function() { this.style.outline = '3px solid white'; };
-        btn.onblur = function() { this.style.outline = 'none'; };
+        var btn = UI.button('Install', { bg: '#fff', color: '#7b5bf5' });
+        btn.setAttribute('nav-id', 'install-banner-accept');
         btn.onclick = function() {
-            var appUrl = 'https://bariccattion.github.io/stremio-vidaa-tv/';
-            var iconUrl = appUrl + 'icon.png';
-            var appId = 'stremio-vidaa';
-
             if (canRegistryInstall) {
                 try {
                     if (installViaRegistry(appUrl, iconUrl, appId, 'Stremio')) {
@@ -167,9 +172,8 @@
         };
         banner.appendChild(btn);
 
-        var dismiss = document.createElement('button');
-        dismiss.textContent = '\u00D7';
-        dismiss.style.cssText = 'background:none;color:rgba(255,255,255,0.6);border:none;font-size:1.4rem;cursor:pointer;padding:0 4px;';
+        var dismiss = UI.button('\u00D7', { bg: 'rgba(255,255,255,0.18)' });
+        dismiss.setAttribute('nav-id', 'install-banner-dismiss');
         dismiss.onclick = function() {
             sessionStorage.setItem(SESSION_DISMISS_KEY, '1');
             banner.remove();

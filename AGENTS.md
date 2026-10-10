@@ -18,7 +18,10 @@ npm is the package manager; Node 22; no linter/formatter is configured.
 - `npx playwright install --with-deps chromium` — one-time test browser install
 - `npm run build` — assemble `app/`; verifies every upstream file's SHA-256
   against `UPSTREAM.lock.json`. Flags: `--update-lock` (record hashes after an
-  intentional sync), `--compare-git=<ref>` (diff output vs a git ref)
+  intentional sync), `--compare-git=<ref>` (diff output vs a git ref),
+  `--no-minify` (ship the patch layer readable — debugging builds; by default
+  the patch scripts are minified ES5 at inline time, sources stay readable,
+  and each inlined blob carries a `/* head/<area>/<name>.js */` marker)
 - `npm test` — Playwright suite; the webServer builds first and serves `app/`
   on port 8080, so tests always run against fresh output
 - `node scripts/probe-core.mjs` / `node scripts/probe-server.mjs` — headless

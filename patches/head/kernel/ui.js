@@ -36,7 +36,8 @@
     // ── button factory ───────────────────────────────────────────────
     // Two looks: the modal chrome (default: padding 10px 16px, radius 10,
     // PlusJakartaSans 700) and opts.small (compact in-player: 13px, weight
-    // 600, inherited font). opts.primary/danger/success/bg pick the fill.
+    // 600, inherited font). opts.primary/danger/success/bg pick the fill,
+    // opts.color overrides the text color (light-on-dark banners).
     // Focus outlines come from the template's global button:focus CSS —
     // per-button focus handlers are not needed and must not be re-added.
     UI.button = function(label, opts) {
@@ -53,7 +54,7 @@
             ? 'border:none;border-radius:8px;padding:8px 14px;font-size:13px;font-family:inherit;font-weight:600;'
             : (solid ? 'border:none;' : 'border:1px solid rgba(255,255,255,0.14);')
               + 'border-radius:10px;padding:10px 16px;font-family:PlusJakartaSans,sans-serif;font-weight:700;';
-        b.style.cssText = 'background:' + bg + ';color:#fff;cursor:pointer;text-align:center;' + shape;
+        b.style.cssText = 'background:' + bg + ';color:' + (opts.color || '#fff') + ';cursor:pointer;text-align:center;' + shape;
         b.setAttribute('tabindex', '0');
         return b;
     };
@@ -118,7 +119,7 @@
         if (config.footerButtons && config.footerButtons.length) {
             var footer = document.createElement('div');
             footer.style.cssText = 'display:flex;gap:10px;justify-content:flex-end;';
-            for (var j = 0; j < config.footerButtons.length; j++) footer.appendChild(footerButtons[j]);
+            for (var j = 0; j < config.footerButtons.length; j++) footer.appendChild(config.footerButtons[j]);
             panel.appendChild(footer);
         }
 
@@ -144,6 +145,16 @@
     };
     window.__closeVidaaModalById = closeModalById;
     window.__createVidaaModal = UI.modal;
+
+    // ── shared stream-advice copy (P1.7) ─────────────────────────────
+    // The trailing "what actually helps" clause of stall/limit messages —
+    // one wording everywhere instead of three drifting copies. Gated on
+    // server availability so bare-TV users never get a dead-end suggestion.
+    UI.serverAdvice = function(serverReady) {
+        return serverReady
+            ? ', or use your Stremio streaming server to transcode it.'
+            : ', or set up a Stremio streaming server (Settings ▸ Server).';
+    };
 
     // ── shared toast shapes ──────────────────────────────────────────
     // The two combos patches kept re-wrapping around RT.toast: a top

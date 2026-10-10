@@ -19,9 +19,9 @@
 
         // Wait for video to be playing for a bit before prefetching
         setTimeout(function() {
-            if (!window.core || typeof window.core.getState !== 'function') return;
+            if (!(RT.core && RT.core.getState)) return;
 
-            window.core.getState('player').then(function(state) {
+            RT.core.getState('player').then(function(state) {
                 if (!state) return;
 
                 // Look for next video/episode info in player state

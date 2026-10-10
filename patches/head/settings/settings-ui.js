@@ -19,10 +19,22 @@
         // g.animations() is the reactive dependency the Animations toggle
         // uses. Toggle it off/on to force SolidJS to re-evaluate every
         // checked()/label() in this section.
+        // Serialized since P1.10: a second request inside the 50 ms restore
+        // window used to interleave read/restore and could leave animations
+        // permanently OFF. Requests during a pending cycle coalesce into a
+        // single follow-up cycle.
+        var rerenderPending = false;
+        var rerenderQueued = false;
         function forceRerender() {
+            if (rerenderPending) { rerenderQueued = true; return; }
+            rerenderPending = true;
             var a = g.animations();
             g.setAnimations(!a);
-            setTimeout(function() { g.setAnimations(a); }, 50);
+            setTimeout(function() {
+                g.setAnimations(a);
+                rerenderPending = false;
+                if (rerenderQueued) { rerenderQueued = false; forceRerender(); }
+            }, 50);
         }
 
         function makeToggle(label, lsKey, onToggle, defaultOn) {
@@ -108,6 +120,12 @@
                 });
             },
             '@exit': function() {
+                // Disabled predicate is correct by upstream facts (verified
+                // in docs/UPSTREAM_ANALYSIS.md §2.1): real VIDAA hardware
+                // reports platform name "Vidaa" (Hisense_GetOSVersion()
+                // answers), so the Exit row is enabled on every target
+                // device; "Web" only occurs on desktop browsers, where
+                // Hisense_Exit/window.close are meaningless.
                 return makeAction('Exit Stremio', function() {
                     if (window.__exitApp) window.__exitApp(); else window.dispatchEvent(new Event('quit'));
                 }, function() { return 'Web' === p.name; });
@@ -123,9 +141,10 @@
             'stereo-downmix-toggle',
             'audio-delay-toggle',
             'audio-delay-offset',
+            'embedded-sub-delay-toggle',
+            'embedded-sub-delay-offset',
             'autoplay-best-toggle',
             'mark-season-toggle',
-            'sub-drift-toggle',
             '@720p-mode',
             'webtorrent-toggle',
             'low-memory-toggle',

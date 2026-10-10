@@ -695,7 +695,13 @@ test.describe('Installer flows', () => {
 
     const written = JSON.parse(await page.evaluate(() => window.__registryWrites[0].writedata));
     const entry = written.AppInfo.find(a => a.Id === 'stremio-vidaa');
-    expect(entry.URL).toBe('https://bariccattion.github.io/stremio-vidaa-tv/');
+    // P0.11: the launcher entry points at THIS deployment's base
+    // (origin + site dir) — a mirror must install itself, not the
+    // canonical GitHub Pages URL.
+    const pageUrl = new URL(page.url());
+    const expectedBase = pageUrl.origin + pageUrl.pathname.replace(/[^/]*$/, '');
+    expect(entry.URL).toBe(expectedBase);
+    expect(entry.IconURL).toBe(expectedBase + 'icon.png');
     expect(await page.evaluate(() => window.__legacyCalls)).toBe(0);
     expect(await page.evaluate(() => localStorage.getItem('stremio_install_banner_method'))).toBe('registry');
 
@@ -816,7 +822,6 @@ test.describe('Diagnostics', () => {
       localStorage.setItem('stremio_720p_mode', 'ui-and-player');
       localStorage.setItem('stremio_force_stereo', 'true');
       localStorage.setItem('stremio_audio_delay_enabled', 'true');
-      localStorage.setItem('stremio_sub_drift_fix', 'true');
       localStorage.setItem('stremio_webtorrent_enabled', 'true');
       localStorage.setItem('stremio_stream_stats', 'true');
       localStorage.setItem('stremio_low_memory', 'false');
@@ -834,7 +839,6 @@ test.describe('Diagnostics', () => {
       mode: localStorage.getItem('stremio_720p_mode'),
       forceStereo: localStorage.getItem('stremio_force_stereo'),
       audioDelay: localStorage.getItem('stremio_audio_delay_enabled'),
-      subDrift: localStorage.getItem('stremio_sub_drift_fix'),
       webtorrent: localStorage.getItem('stremio_webtorrent_enabled'),
       streamStats: localStorage.getItem('stremio_stream_stats'),
       lowMemory: localStorage.getItem('stremio_low_memory'),
@@ -848,7 +852,6 @@ test.describe('Diagnostics', () => {
     expect(state.mode).toBe('auto');
     expect(state.forceStereo).toBe('false');
     expect(state.audioDelay).toBe('false');
-    expect(state.subDrift).toBe('false');
     expect(state.webtorrent).toBe('false');
     expect(state.streamStats).toBe('false');
     expect(state.lowMemory).toBe('true');

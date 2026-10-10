@@ -58,13 +58,14 @@
         return false;
     }
 
-    var lastHandedOffUrl = '';
     // Player-entry watcher: must run on every route (handoff decisions
     // happen on entry), and auto-native handoff stays live in Quiet
-    // Player Mode — hence no route gate and quiet:false.
+    // Player Mode — hence no route gate and quiet:false. The URL memo is
+    // the kernel's SHARED one (P1.3): any launch path's attempt is
+    // respected here, and a failed attempt clears it for a retry.
     RT.poll(function() {
         if (!modeAll() && !modeMkvOnly()) return;
-        if (!RT.inPlayer()) { lastHandedOffUrl = ''; return; }
+        if (!RT.inPlayer()) { window.__nativeHandoff.clearLastUrl(); return; }
         if (!hasNative()) return;
 
         var video = document.querySelector('video');
@@ -72,22 +73,24 @@
 
         var src = video.currentSrc || video.src || '';
         if (!shouldHandoff(src)) return;
-        if (src === lastHandedOffUrl) return;
+        if (src === window.__nativeHandoff.lastUrl()) return;
 
         // Give the browser a moment to resolve the final src (some players
         // set a blob: then swap to the real URL).
         if (video.readyState < 1) return;
 
-        lastHandedOffUrl = src;
+        window.__nativeHandoff.setLastUrl(src);
         log('Handing off to native player:', src.substring(0, 100));
 
         // Pause the browser player to free the decoder before we launch the native one.
         try { video.pause(); } catch(e) {}
         // H5: act on the verified result — the wrapper un-pauses and advises
         // on failure; allow re-attempt on the next src by clearing the memo.
+        // (A duplicate launch while one is in flight resolves false
+        // immediately — the kernel guard, P1.3.)
         if (window.__handoffAndRecover) {
             window.__handoffAndRecover(video, src, function(opened) {
-                if (!opened) lastHandedOffUrl = '';
+                if (!opened) window.__nativeHandoff.clearLastUrl();
             });
         }
     }, 1500, { quiet: false });

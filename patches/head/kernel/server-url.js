@@ -52,15 +52,15 @@
     function pushToCore(url, done) {
         try {
             if (!RT.coreUsable()) { if (done) done(); return; }
-            window.core.getState('ctx').then(function(ctxState) {
+            RT.core.getState('ctx').then(function(ctxState) {
                 if (!ctxState || !ctxState.profile || !ctxState.profile.settings) { if (done) done(); return; }
                 var cur = ctxState.profile.settings;
                 if (cur.streamingServerUrl === url) { if (done) done(); return; }
                 var ns = {};
                 for (var k in cur) ns[k] = cur[k];
                 ns.streamingServerUrl = url;
-                return window.core.dispatch({ action: 'Ctx', args: { action: 'UpdateSettings', args: ns } }, 'ctx').then(function() {
-                    return window.core.dispatch({ action: 'StreamingServer', args: { action: 'Reload' } }, 'streaming_server');
+                return RT.core.dispatch({ action: 'Ctx', args: { action: 'UpdateSettings', args: ns } }, 'ctx').then(function() {
+                    return RT.core.dispatch({ action: 'StreamingServer', args: { action: 'Reload' } }, 'streaming_server');
                 }).then(function() {
                     log('Pushed URL to core, streaming server reloaded');
                     if (done) done();
@@ -106,31 +106,44 @@
 
     // ── Mirror: the core is the source of truth for USER changes (native ──
     // Settings dialog, account sync); copy core→localStorage+global so this
-    // layer probes the right server. Runs only after the boot push settled —
-    // that handshake used to be a 10s skip-counter in another patch.
+    // layer probes the right server. Event-driven since P1.1/P1.5: an
+    // RT.core.onState('ctx') subscription replaces the 2 s poll — same
+    // worst-case cadence (rate limit), immediate reaction at best. The
+    // mirror only arms after the boot push settles (explicit control flow,
+    // as before), with one direct pull at settle so a failed push still
+    // reconciles even if no NewState event arrives.
     var lastKnownUrl = null;
-    RT.poll(function() {
+    function mirrorCheck(state) {
         if (!bootPushSettled) return;
-        if (!RT.coreUsable()) return;
-        window.core.getState('ctx').then(function(state) {
-            if (!state || !state.profile || !state.profile.settings) return;
-            var url = state.profile.settings.streamingServerUrl;
-            if (lastKnownUrl === null) { lastKnownUrl = url; return; }
-            if (url !== lastKnownUrl) {
-                lastKnownUrl = url;
-                var stored = RT.store.get(LS_KEY, null);
-                window.__STREMIO_SERVER_URL__ = url;
-                if (stored !== url) {
-                    RT.store.set(LS_KEY, url);
-                    window.core.dispatch({ action: 'StreamingServer', args: { action: 'Reload' } }, 'streaming_server').then(function() {
-                        log('URL changed ->', url, '; mirrored to localStorage; streaming server reloaded');
-                    }).catch(function(e) {
-                        log.error('Reload failed:', e);
-                    });
-                }
+        if (!state || !state.profile || !state.profile.settings) return;
+        var url = state.profile.settings.streamingServerUrl;
+        if (lastKnownUrl === null) { lastKnownUrl = url; return; }
+        if (url !== lastKnownUrl) {
+            lastKnownUrl = url;
+            var stored = RT.store.get(LS_KEY, null);
+            window.__STREMIO_SERVER_URL__ = url;
+            if (stored !== url) {
+                RT.store.set(LS_KEY, url);
+                RT.core.dispatch({ action: 'StreamingServer', args: { action: 'Reload' } }, 'streaming_server').then(function() {
+                    log('URL changed ->', url, '; mirrored to localStorage; streaming server reloaded');
+                }).catch(function(e) {
+                    log.error('Reload failed:', e);
+                });
             }
-        }).catch(function() {});
-    }, 2000, { quiet: true });
+        }
+    }
+    if (RT.core && RT.core.onState) {
+        RT.core.onState('ctx', mirrorCheck);
+    }
+    RT.coreReady(function() {
+        // One direct pull once the boot push has had its chance, so a
+        // failed push reconciles even without a subsequent NewState event.
+        setTimeout(function() {
+            if (!bootPushSettled) return;
+            if (!(RT.core && RT.core.getState)) return;
+            RT.core.getState('ctx').then(mirrorCheck).catch(function() {});
+        }, 1500);
+    });
 
     // ── Health monitor + core heal. ─────────────────────────────────────
     // The core checks the streaming server ONCE (Load / URL change / Reload)
@@ -149,7 +162,7 @@
     function maybeHealCore() {
         try {
             if (!RT.coreUsable()) return;
-            window.core.getState('streaming_server').then(function(state) {
+            RT.core.getState('streaming_server').then(function(state) {
                 if (!state || typeof state !== 'object') return;
                 var coreUrl = state.selected && state.selected.transportUrl;
                 if (healLastCoreUrl === null) healLastCoreUrl = coreUrl;
@@ -160,7 +173,7 @@
                 if (now - healLastAt < HEAL_MIN_INTERVAL_MS) return;
                 healLastAt = now;
                 healAttempts++;
-                window.core.dispatch({ action: 'StreamingServer', args: { action: 'Reload' } }, 'streaming_server')
+                RT.core.dispatch({ action: 'StreamingServer', args: { action: 'Reload' } }, 'streaming_server')
                     .catch(function() {});
             }).catch(function() {});
         } catch (e) {}

@@ -1,0 +1,12 @@
+{
+  "chunk": "details.chunk.js",
+  "description": "Honest external-stream handling on Vidaa: upstream keeps externalUrl streams visible on Vidaa but gates the press to a dead-end dialog ('Opening other apps is not currently possible...'). This edit removes Vidaa from that gate so Vidaa gets the SAME flow the Web platform gets: the bilingual confirm dialog ('You are about to exit Stremio and open <app>') and then openExternal -> window.open(url) — the streaming service's website in the TV browser. No fabricated deep-link hooks (VIDAA firmware does not honor fabricated platform messages — issues #28/#29 precedent); the popup-blocked case is caught by player/external-streams.js.",
+  "ops": [
+    {
+      "note": "External stream press: Vidaa joins the confirm-dialog branch instead of the dead-end dialog (isTitan/isNetTV keep the dead-end).",
+      "find": "r?n.isTitan||n.isNetTV||n.isVidaa?c():o():i.player&&t.navigate(i.player)",
+      "replace": "r?n.isTitan||n.isNetTV?c():o():i.player&&t.navigate(i.player)"
+    }
+  ],
+  "fixTrailingNewline": "ensure"
+}

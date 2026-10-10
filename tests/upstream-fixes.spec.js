@@ -155,149 +155,40 @@ test.describe('#9 — Playback speed & volume persistence', () => {
 });
 
 // ==========================================================================
-// #8 — Fix subtitle size on start
+// #8 — Subtitle size persistence: REMOVED (P0.1, 2026-10-08)
+// The size-persist patch was dead code — it dispatched a nonexistent
+// `Player/SetProp` core action with the wrong prop name (`subtitleSize`;
+// the engine prop is `subtitlesSize`). Subtitle size is persisted natively
+// by the core (Settings ▸ Playback ▸ Subtitles → Size → Ctx UpdateSettings),
+// so the patch and its tests were deleted together.
 // ==========================================================================
-test.describe('#8 — Subtitle size persistence', () => {
-  test('saved subtitle size dispatches SetProp to core on player init', async ({ page }) => {
-    await bootApp(page, {
-      core: 'mock',
-      url: '/#/player/sub-size-test',
-      mockCore: {},
-      localStorage: { stremio_subtitle_size: '150' },
-    });
-    // The patch dispatches when it sees the player route + saved size — wait
-    // for the dispatch signal itself.
-    await page.waitForFunction(
-      () => (window.__mockDispatchLog || []).some((e) => e.indexOf('"subtitleSize"') !== -1),
-      null,
-      { timeout: 10000 }
-    );
-    const dispatches = await parsedDispatches(page);
-    const sizeDispatch = dispatches.find(function(d) {
-      return d.args && d.args.args &&
-        d.args.args.propName === 'subtitleSize' &&
-        d.args.args.propValue === 150;
-    });
-    expect(sizeDispatch).toBeTruthy();
-  });
-
-  test('out-of-range sizes are ignored', async ({ page }) => {
-    await bootApp(page, { core: 'none' });
-    await page.evaluate(() => {
-      localStorage.setItem('stremio_subtitle_size', '999');
-    });
-
-    const valid = await page.evaluate(() => {
-      var v = parseInt(localStorage.getItem('stremio_subtitle_size'), 10);
-      return (v && v >= 50 && v <= 250) ? v : null;
-    });
-    expect(valid).toBeNull();
-  });
-});
 
 // ==========================================================================
-// #7 — Remember subtitle language preference
+// #7 — Subtitle language memory: REMOVED (P0.2, 2026-10-08)
+// The patch was provably inert end-to-end: the save path read
+// `state.selectedSubtitleTrack`/`.selected` (fields the real player state
+// does not expose — it has `subtitlesTracks` + `selectedSubtitlesTrackId`),
+// so `stremio_subtitle_lang` was never written in production; the apply
+// path read `state.subtitleTracks` (wrong name) and dispatched the
+// nonexistent `Player/SetProp` action with `selectedSubtitleTrackId`.
+// The mock-core tests below passed because they were crafted with the
+// phantom field shapes — validating our protocol, not the engine's
+// (the P0.10 test-debt problem in docs/PATCHES_VS_UPSTREAM.md).
+// Language memory is served by the core natively: Settings ▸ Playback ▸
+// Subtitles ▸ DEFAULT_LANGUAGE persists `subtitlesLanguage` (+ wasm
+// `subtitlesAutoSelect`). Verify on the manual TV smoke checklist.
 // ==========================================================================
-test.describe('#7 — Subtitle language memory', () => {
-  test('exact match: saved "eng" selects track with lang "eng"', async ({ page }) => {
-    await bootApp(page, {
-      core: 'mock',
-      url: '/#/player/lang-exact',
-      mockCore: {
-        player: {
-          subtitleTracks: [
-            { id: 'track-fr', lang: 'fre' },
-            { id: 'track-en', lang: 'eng' }
-          ]
-        }
-      },
-      localStorage: { stremio_subtitle_lang: 'eng' },
-    });
-    await page.waitForFunction(
-      () => (window.__mockDispatchLog || []).some((e) => e.indexOf('"selectedSubtitleTrackId"') !== -1),
-      null,
-      { timeout: 10000 }
-    );
-    const dispatches = await parsedDispatches(page);
-    const langPick = dispatches.find(function(d) {
-      return d.args && d.args.args &&
-        d.args.args.propName === 'selectedSubtitleTrackId' &&
-        d.args.args.propValue === 'track-en';
-    });
-    expect(langPick).toBeTruthy();
-  });
-
-  test('partial match: saved "en" matches track lang "eng"', async ({ page }) => {
-    await bootApp(page, {
-      core: 'mock',
-      url: '/#/player/lang-partial',
-      mockCore: {
-        player: {
-          subtitleTracks: [
-            { id: 'track-deu', lang: 'deu' },
-            { id: 'track-eng', lang: 'eng' }
-          ]
-        }
-      },
-      localStorage: { stremio_subtitle_lang: 'en' },
-    });
-    await page.waitForFunction(
-      () => (window.__mockDispatchLog || []).some((e) => e.indexOf('"selectedSubtitleTrackId"') !== -1),
-      null,
-      { timeout: 10000 }
-    );
-    const dispatches = await parsedDispatches(page);
-    const langPick = dispatches.find(function(d) {
-      return d.args && d.args.args &&
-        d.args.args.propName === 'selectedSubtitleTrackId' &&
-        d.args.args.propValue === 'track-eng';
-    });
-    expect(langPick).toBeTruthy();
-  });
-
-  test('no auto-select when no saved language', async ({ page }) => {
-    await bootApp(page, { core: 'none' });
-    await page.evaluate(() => {
-      localStorage.removeItem('stremio_subtitle_lang');
-    });
-    // The patch won't do anything without a saved language — just verify no crash
-    const lang = await page.evaluate(() => localStorage.getItem('stremio_subtitle_lang'));
-    expect(lang).toBeNull();
-  });
-});
 
 // ==========================================================================
-// #11 — Subtitle off/unload option
+// #11 — Subtitle off option: REMOVED (P0.3, 2026-10-08)
+// The patch was removed: upstream Theater 1.10.0's subtitle picker already
+// leads with a NONE row (clears both selectedSubtitlesTrackId and
+// selectedExtratitlesTrackId through the engine controller). Our injection
+// targeted `[class*="track"]` selectors that only match the seekbar's
+// track class, and its click dispatched a nonexistent `Player/SetProp`
+// core action with the wrong prop name — a no-op that corrupted the
+// seekbar instead. The tests went with the patch.
 // ==========================================================================
-test.describe('#11 — Subtitle off option', () => {
-  test('window.__disableSubtitles is a function', async ({ page }) => {
-    await bootApp(page, { core: 'none' });
-    const exists = await page.evaluate(() => typeof window.__disableSubtitles === 'function');
-    expect(exists).toBe(true);
-  });
-
-  test('dispatches null selectedSubtitleTrackId to core', async ({ page }) => {
-    await bootApp(page, { core: 'mock' });
-    await page.evaluate(() => window.__disableSubtitles());
-    const dispatches = await parsedDispatches(page);
-    const nullSub = dispatches.find(function(d) {
-      return d.args && d.args.args &&
-        d.args.args.propName === 'selectedSubtitleTrackId' &&
-        d.args.args.propValue === null;
-    });
-    expect(nullSub).toBeTruthy();
-  });
-
-  test('clears saved subtitle language from localStorage', async ({ page }) => {
-    await bootApp(page, { core: 'mock' });
-    await page.evaluate(() => {
-      localStorage.setItem('stremio_subtitle_lang', 'eng');
-      window.__disableSubtitles();
-    });
-    const stored = await page.evaluate(() => localStorage.getItem('stremio_subtitle_lang'));
-    expect(stored).toBeNull();
-  });
-});
 
 // ==========================================================================
 // #12 — Pass full title to native player
@@ -404,6 +295,67 @@ test.describe('#14 — Full subtitle filenames', () => {
     expect(ok).toBe(true);
   });
 
+  // P0.5 regression lock: the rewrite targets the settings-list row structure
+  // (`.option-*` row with a `.label-*` text child) and is content-qualified —
+  // the old `[class*="track"]` selector + `indexOf('') === 0` empty-prefix
+  // match wrote subtitle filenames into the seekbar's track element.
+  test('picker label rows expand; seekbar-class elements are never touched', async ({ page }) => {
+    // core:'mock' — the app's auth guard keeps the #/player/ route mounted
+    // (with core:'none' it redirects to /login and the observer never arms).
+    await bootApp(page, { core: 'mock', mockCore: {}, url: '/#/player/expand-test' });
+    // Let the patch's 2s route poller connect its MutationObserver.
+    await page.waitForTimeout(2500);
+
+    await page.evaluate(() => {
+      // Mutate the cache object the patch closure holds — replacing
+      // window.__fullSubLabels outright would leave the closure's
+      // reference untouched.
+      window.__fullSubLabels.sub1 = 'Movie.2024.BluRay.1080p.x264-GROUP.english';
+      var menu = document.createElement('div');
+
+      // A settings-list option row: icon + label children, truncated label.
+      var row = document.createElement('div');
+      row.className = 'option-pCk4g';
+      var icon = document.createElement('div');
+      icon.className = 'icon-QwWkt';
+      var label = document.createElement('div');
+      label.className = 'label-ZUqct';
+      label.textContent = 'Movie.2024.Blu';
+      row.appendChild(icon);
+      row.appendChild(label);
+      menu.appendChild(row);
+
+      // The old bug's victim: the seekbar track (no label child, empty text).
+      var seek = document.createElement('div');
+      seek.className = 'track-Xfs0A';
+      seek.textContent = '';
+      menu.appendChild(seek);
+
+      document.body.appendChild(menu);
+    });
+
+    await page.waitForFunction(() => {
+      var el = document.querySelector('.label-ZUqct');
+      return el && el.textContent.indexOf('x264-GROUP') !== -1;
+    }, null, { timeout: 5000 });
+
+    const seek = await page.evaluate(() => {
+      var el = document.querySelector('.track-Xfs0A');
+      return {
+        text: el ? el.textContent : 'GONE',
+        marked: el ? el.getAttribute('data-full-label') : 'GONE'
+      };
+    });
+    expect(seek.text).toBe('');
+    expect(seek.marked).toBeNull();
+
+    // The rewrite touches only the label child — siblings survive.
+    const iconSurvived = await page.evaluate(() =>
+      !!document.querySelector('.option-pCk4g .icon-QwWkt')
+    );
+    expect(iconSurvived).toBe(true);
+  });
+
   test('subtitle fetch responses are intercepted and cached', async ({ page }) => {
     await page.route('**/subtitles/**', async (route) => {
       await route.fulfill({
@@ -490,6 +442,335 @@ test.describe('#15 — Prefetch next episode', () => {
 });
 
 // ==========================================================================
+// #20 — Mark Season as Watched (rewritten P0.6; tested via the
+// __markSeasonWatched seam — DOM injection stays untested like the other
+// injection paths).
+// ==========================================================================
+test.describe('#20 — Mark Season as Watched', () => {
+  const SEASON_STATE = {
+    meta_details: {
+      metaItem: {
+        ready: {
+          videos: [
+            { id: 's01e01', season: 1, episode: 1 },
+            { id: 's01e02', season: 1, episode: 2 },
+            { id: 's02e01', season: 2, episode: 1 }
+          ]
+        }
+      }
+    }
+  };
+
+  test('marks only the selected season via meta_details', async ({ page }) => {
+    await bootApp(page, {
+      core: 'mock',
+      mockCore: SEASON_STATE,
+      url: '/#/detail/series/tt999?season=2',
+    });
+    const res = await page.evaluate(() => window.__markSeasonWatched());
+    expect(res).toEqual({ total: 1, ok: 1, fail: 0 });
+    const dispatches = await parsedDispatches(page);
+    const marks = dispatches.filter((d) =>
+      d.action === 'MetaDetails' && d.args && d.args.action === 'MarkVideoAsWatched');
+    expect(marks.length).toBe(1);
+    expect(marks[0].args.args).toEqual({ id: 's02e01', isWatched: true });
+  });
+
+  test('defaults to season 1 when the route has no season param', async ({ page }) => {
+    await bootApp(page, {
+      core: 'mock',
+      mockCore: SEASON_STATE,
+      url: '/#/detail/series/tt999',
+    });
+    const res = await page.evaluate(() => window.__markSeasonWatched());
+    expect(res.total).toBe(2);
+    expect(res.ok).toBe(2);
+    const dispatches = await parsedDispatches(page);
+    const ids = dispatches
+      .filter((d) => d.action === 'MetaDetails' && d.args && d.args.action === 'MarkVideoAsWatched')
+      .map((d) => d.args.args.id).sort();
+    expect(ids).toEqual(['s01e01', 's01e02']);
+  });
+
+  test('no videos in state → nothing dispatched, honest zero result', async ({ page }) => {
+    await bootApp(page, { core: 'mock', mockCore: {}, url: '/#/detail/series/tt999?season=1' });
+    const res = await page.evaluate(() => window.__markSeasonWatched());
+    expect(res.total).toBe(0);
+    expect(res.ok).toBe(0);
+    const dispatches = await parsedDispatches(page);
+    expect(dispatches.filter((d) => d.action === 'MetaDetails').length).toBe(0);
+  });
+});
+
+// ==========================================================================
+// Stats v2 (P2.3) — verified stream facts in the overlay: hash/size/file
+// from the selected stream's behaviorHints (the fields the upstream
+// videoParams wrapper consumes), source classification, honest unknowns.
+// ==========================================================================
+test.describe('#22 — Stream stats v2 (verified facts)', () => {
+  test('overlay lines show hash/size/file from the selected stream, not labels', async ({ page }) => {
+    await bootApp(page, {
+      core: 'mock',
+      url: '/#/player/stats-v2',
+      mockCore: {
+        player: {
+          stream: {
+            url: 'http://cdn.example/Movie.2024.2160p.mkv',
+            behaviorHints: {
+              videoHash: 'abc123def4567890abcd',
+              videoSize: 8589934592,
+              filename: 'Movie.2024.2160p.BluRay.mkv'
+            }
+          }
+        }
+      }
+    });
+    const lines = await page.evaluate(async () => {
+      var video = document.createElement('video');
+      video.src = 'http://cdn.example/Movie.2024.2160p.mkv';
+      document.body.appendChild(video);
+      // The facts cache fills asynchronously (one getState per new src).
+      var joined = '';
+      var deadline = Date.now() + 4000;
+      while (Date.now() < deadline) {
+        joined = window.__getStreamStatsLines(video).join('\n');
+        if (joined.indexOf('abc123') !== -1) break;
+        await new Promise((r) => setTimeout(r, 150));
+      }
+      return joined;
+    });
+    expect(lines).toContain('abc123def4567890');     // hash (16-char truncation)
+    expect(lines).toContain('8.00 GB');              // verified size, formatted
+    expect(lines).toContain('Movie.2024.2160p.BluRay.mkv');
+    expect(lines).toContain('direct link');          // source classification
+  });
+
+  test('source classification marks server and webtorrent transports', async ({ page }) => {
+    await bootApp(page, { core: 'mock', mockCore: {}, url: '/#/player/stats-class' });
+    const out = await page.evaluate(() => {
+      function linesFor(src) {
+        var v = document.createElement('video');
+        v.src = src;
+        return window.__getStreamStatsLines(v).join('\n');
+      }
+      return {
+        server: linesFor('http://192.168.1.5:11470/hlsv2/h264-aac-mp4/master.m3u8?mediaURL=x'),
+        torrent: linesFor(window.location.origin + '/webtorrent/abc/file.mkv'),
+        none: linesFor('')
+      };
+    });
+    expect(out.server).toContain('streaming server (transcoded)');
+    expect(out.torrent).toContain('webtorrent (service worker)');
+    expect(out.none).toContain('unknown');
+  });
+
+  test('audio-track visibility from the server /tracks/ listing', async ({ page }) => {
+    // The picker half of this feature is BLOCKED upstream (no audio-selection
+    // param exists on the official server — see P2.3); the honest half is
+    // SHOWING what audio the file carries via the real /tracks/ endpoint.
+    await page.route('**/tracks/**', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify([
+          { type: 'video', codec: 'h264' },
+          { type: 'audio', codec: 'eac3', channels: 6, lang: 'eng' },
+          { type: 'audio', codec: 'aac', channels: 2, lang: 'spa' },
+          { type: 'text', codec: 'srt' }
+        ])
+      });
+    });
+    await bootApp(page, {
+      core: 'mock',
+      url: '/#/player/stats-audio',
+      localStorage: { stremio_server_url: 'http://192.168.1.50:11470' },
+      mockCore: {
+        player: {
+          stream: { url: 'http://cdn.example/Movie.dual.mkv', behaviorHints: {} }
+        }
+      }
+    });
+    const lines = await page.evaluate(async () => {
+      var video = document.createElement('video');
+      video.src = 'http://cdn.example/Movie.dual.mkv';
+      document.body.appendChild(video);
+      var joined = '';
+      var deadline = Date.now() + 5000;
+      while (Date.now() < deadline) {
+        joined = window.__getStreamStatsLines(video).join('\n');
+        if (/Audio\s+: 2 tracks/.test(joined)) break;
+        await new Promise((r) => setTimeout(r, 150));
+      }
+      return joined;
+    });
+    expect(lines).toMatch(/Audio\s+: 2 tracks — eng eac3 6ch, spa aac 2ch/);
+  });
+
+  test('unknown facts stay honestly unknown (no label heuristics)', async ({ page }) => {
+    await bootApp(page, { core: 'mock', mockCore: { player: { stream: null } }, url: '/#/player/stats-empty' });
+    const lines = await page.evaluate(async () => {
+      var video = document.createElement('video');
+      video.src = 'http://cdn.example/plain.mp4';
+      document.body.appendChild(video);
+      // Give the (empty) facts pull a moment to settle.
+      await new Promise((r) => setTimeout(r, 600));
+      return window.__getStreamStatsLines(video).join('\n');
+    });
+    expect(lines).toMatch(/Hash\s+: unknown/);
+    expect(lines).toMatch(/Size\s+: unknown/);
+    // No bitrate line without a verified size.
+    expect(lines).not.toContain('(est.)');
+  });
+});
+
+// ==========================================================================
+// Embedded-subtitle delay — shift native <track> VTTCues (the upstream
+// stepper only drives extraSubtitlesDelay). Tested through the exposed
+// seam + a real TextTrack with real VTTCues.
+// ==========================================================================
+test.describe('#23 — Embedded subtitle delay', () => {
+  async function makeTrackWithCue(page) {
+    return page.evaluate(() => {
+      var video = document.createElement('video');
+      document.body.appendChild(video);
+      var track = video.addTextTrack('subtitles', 'Test', 'en');
+      track.mode = 'showing';
+      track.addCue(new VTTCue(10, 12, 'hello'));
+      track.addCue(new VTTCue(20, 22, 'world'));
+      return { ok: true };
+    });
+  }
+
+  test('shifts cue times by the offset and clamps at 0', async ({ page }) => {
+    await bootApp(page, { core: 'mock', url: '/#/player/esd-shift' });
+    await makeTrackWithCue(page);
+    const result = await page.evaluate(async () => {
+      var video = document.querySelector('video');
+      var cues = video.textTracks[0].cues;
+      var before = { s: cues[0].startTime, e: cues[0].endTime };
+      window.__setEmbeddedSubDelay(500);                       // +500ms later
+      var afterPlus = { s: cues[0].startTime, e: cues[0].endTime };
+      window.__setEmbeddedSubDelay(-1000);                     // earlier
+      var afterMinus = { s: cues[0].startTime, e: cues[0].endTime };
+      return { before: before, afterPlus: afterPlus, afterMinus: afterMinus, stored: window.__getEmbeddedSubDelay() };
+    });
+    expect(result.before.s).toBe(10);
+    expect(result.afterPlus.s).toBeCloseTo(10.5, 3);
+    expect(result.afterPlus.e).toBeCloseTo(12.5, 3);
+      // Target -1000 = ABSOLUTE offset from the original cue time
+      // (the per-cue marker makes offsets absolute, not incremental):
+      // 10 - 1.0 = 9.0, not a further -1.5 from the +500 state.
+      expect(result.afterMinus.s).toBeCloseTo(9, 3);
+    expect(result.stored).toBe(-1000);
+  });
+
+  test('re-apply is idempotent; late cues get the offset on reapply', async ({ page }) => {
+    await bootApp(page, { core: 'mock', url: '/#/player/esd-idem' });
+    await makeTrackWithCue(page);
+    const result = await page.evaluate(() => {
+      var video = document.querySelector('video');
+      var track = video.textTracks[0];
+      window.__setEmbeddedSubDelay(250);
+      var s1 = track.cues[0].startTime;
+      window.__setEmbeddedSubDelay(250);        // same target — no double shift
+      var s2 = track.cues[0].startTime;
+      // A cue added AFTER the offset (progressive HLS pattern): cuechange
+      // hook + idempotent marker handle it on the next application.
+      track.addCue(new VTTCue(30, 31, 'late cue'));
+      window.__setEmbeddedSubDelay(250);
+      var lateCue = track.cues[2];
+      return { s1: s1, s2: s2, lateStart: lateCue.startTime };
+    });
+    expect(result.s1).toBeCloseTo(10.25, 3);
+    expect(result.s2).toBeCloseTo(10.25, 3);     // idempotent
+    expect(result.lateStart).toBeCloseTo(30.25, 3);
+  });
+
+  test('bracket hotkeys adjust and persist (when enabled)', async ({ page }) => {
+    await bootApp(page, {
+      core: 'mock',
+      url: '/#/player/esd-keys',
+      localStorage: { stremio_embedded_sub_delay_enabled: 'true' },
+    });
+    const out = await page.evaluate(async () => {
+      window.__setEmbeddedSubDelay(0);
+      document.dispatchEvent(new KeyboardEvent('keydown', { keyCode: 221, bubbles: true })); // ]
+      document.dispatchEvent(new KeyboardEvent('keydown', { keyCode: 221, bubbles: true })); // ]
+      document.dispatchEvent(new KeyboardEvent('keydown', { keyCode: 219, bubbles: true })); // [
+      await new Promise((r) => setTimeout(r, 200));
+      return { delay: window.__getEmbeddedSubDelay(), stored: localStorage.getItem('stremio_embedded_sub_delay') };
+    });
+    expect(out.delay).toBe(25);   // +25 +25 -25
+    expect(out.stored).toBe('25');
+  });
+});
+
+// ==========================================================================
+// Honest external-stream handling (P2.3)
+// ==========================================================================
+test.describe('#24 — External streams on Vidaa', () => {
+  const { readFileSync } = require('fs');
+  const { join } = require('path');
+
+  // Build-structure assertion (the webtorrent.spec documented-exception
+  // category): the details.chunk.js chunk-edit must route Vidaa out of the
+  // dead-end dialog branch. The build itself enforces that the `find`
+  // matches exactly once, so this pins the SEMANTICS + the re-baseline
+  // anchor.
+  test('chunk-edit removes Vidaa from the dead-end dialog branch', () => {
+    const def = JSON.parse(readFileSync(join(__dirname, '..', 'patches', 'chunk-edits', 'details.chunk.js.json'), 'utf8'));
+    expect(def.chunk).toBe('details.chunk.js');
+    expect(def.ops.length).toBe(1);
+    const op = def.ops[0];
+    // The upstream gate: Titan/NetTV/Vidaa → dead-end; the replacement
+    // keeps the dead-end for Titan/NetTV only — Vidaa falls through to
+    // upstream's own confirm dialog → openExternal → window.open.
+    expect(op.find).toContain('n.isTitan||n.isNetTV||n.isVidaa?c():o()');
+    expect(op.replace).toContain('n.isTitan||n.isNetTV?c():o()');
+    expect(op.replace).not.toContain('isVidaa?c()');
+  });
+
+  test('popup-blocked window.open gets an honest advice toast', async ({ page }) => {
+    // Simulate the TV browser blocking popups BEFORE the patch layer loads:
+    // the belt wraps this stub, sees the falsy return, and advises.
+    await page.addInitScript(() => {
+      window.open = function () { return null; };
+    });
+    await bootApp(page, { core: 'none' });
+    const out = await page.evaluate(async () => {
+      window.open('https://netflix.com/title/812345');
+      var deadline = Date.now() + 3000;
+      while (Date.now() < deadline) {
+        var toasts = Array.prototype.slice.call(document.querySelectorAll('div'))
+          .map(function (d) { return d.textContent || ''; })
+          .filter(function (t) { return t.indexOf('netflix.com') !== -1 && t.indexOf('didn') !== -1; });
+        if (toasts.length) return { advised: true, text: toasts[0] };
+        await new Promise(function (r) { setTimeout(r, 150); });
+      }
+      return { advised: false };
+    });
+    expect(out.advised).toBe(true);
+    expect(out.text).toContain('pick a stream that plays here');
+  });
+
+  test('successful window.open passes through with no toast', async ({ page }) => {
+    await page.addInitScript(() => {
+      window.open = function () { return { fakePopup: true }; };
+    });
+    await bootApp(page, { core: 'none' });
+    const out = await page.evaluate(async () => {
+      var w = window.open('https://www.example.com/x');
+      await new Promise(function (r) { setTimeout(r, 700); });
+      var advised = Array.prototype.slice.call(document.querySelectorAll('div'))
+        .some(function (d) { return (d.textContent || '').indexOf("didn\u2019t open") !== -1; });
+      return { returned: !!w, advised: advised };
+    });
+    expect(out.returned).toBe(true);
+    expect(out.advised).toBe(false);
+  });
+});
+
+// ==========================================================================
 // Integration: all patches coexist
 // ==========================================================================
 test.describe('Integration', () => {
@@ -498,15 +779,176 @@ test.describe('Integration', () => {
 
     const globals = await page.evaluate(() => ({
       exitApp: typeof window.__exitApp,
-      disableSubtitles: typeof window.__disableSubtitles,
       launchNativePlayer: typeof window.__launchNativePlayer,
       fullSubLabels: typeof window.__fullSubLabels
     }));
 
     expect(globals.exitApp).toBe('function');
-    expect(globals.disableSubtitles).toBe('function');
     expect(globals.launchNativePlayer).toBe('function');
     expect(globals.fullSubLabels).toBe('object');
+  });
+
+  // P1.1: the RT.core seam — Promise-normalized getState/dispatch with
+  // field validation (the sync-getState bug class must fail loudly), and
+  // NewState-driven onState pulls.
+  test('RT.core rejects unknown fields loudly', async ({ page }) => {
+    await bootApp(page, { core: 'mock', mockCore: {} });
+    const result = await page.evaluate(async () => {
+      var out = {};
+      try { await window.__vidaaRuntime.core.getState('streaming'); out.getState = 'resolved'; }
+      catch (e) { out.getState = e.message; }
+      try { await window.__vidaaRuntime.core.dispatch({ action: 'Ctx' }, 'bogus'); out.dispatch = 'resolved'; }
+      catch (e) { out.dispatch = e.message; }
+      return out;
+    });
+    expect(result.getState).toContain('unknown core field');
+    expect(result.dispatch).toContain('unknown core field');
+  });
+
+  test('RT.core.getState resolves mock state for valid fields', async ({ page }) => {
+    await bootApp(page, {
+      core: 'mock',
+      mockCore: { meta_details: { metaItem: { ready: { videos: [] } } } },
+    });
+    const state = await page.evaluate(() => window.__vidaaRuntime.core.getState('meta_details'));
+    expect(state.metaItem.ready.videos).toEqual([]);
+  });
+
+  test('RT.core.onState delivers NewState-driven pulls', async ({ page }) => {
+    await bootApp(page, { core: 'mock', mockCore: { ctx: { profile: { settings: {} } } } });
+    const seen = await page.evaluate(async () => {
+      var seenUrls = null;
+      var off = window.__vidaaRuntime.core.onState('ctx', function (state) {
+        seenUrls = state && state.profile && state.profile.settings.streamingServerUrl;
+      });
+      // The mock core emits NewState from __setMockCore (helpers).
+      window.__setMockCore('ctx', { profile: { settings: { streamingServerUrl: 'http://10.9.8.7:11470' } } });
+      var deadline = Date.now() + 4000;
+      while (Date.now() < deadline && seenUrls === null) {
+        await new Promise(function (r) { setTimeout(r, 100); });
+      }
+      off();
+      return seenUrls;
+    });
+    expect(seen).toBe('http://10.9.8.7:11470');
+  });
+
+  // P1.2: the stall coordinator — one detector, recover claims, inform
+  // escalation, episode close on progress. Driven via the simulateTick
+  // test seam with tuned thresholds (no real-time waits). Test strategies
+  // use priorities ABOVE the production ones (auto-rebuffer 200 /
+  // prep-handoff 300) so the page's real strategies can't claim first.
+  test('stall coordinator: recover claims, inform escalates, progress closes', async ({ page }) => {
+    await bootApp(page, { core: 'none' });
+    const result = await page.evaluate(() => {
+      var RT = window.__vidaaRuntime;
+      var events = [];
+      RT.stall.tune({ frozenMs: 2000, reInvokeMs: 0, informAfterMs: 0, eventCooldownMs: 0 });
+      RT.stall.register({
+        id: 't-recover', phase: 'recover', priority: 900, type: '*',
+        act: function(v, ep) { events.push('recover:' + ep.invocation); return true; }
+      });
+      RT.stall.register({
+        id: 't-inform', phase: 'inform', priority: 800, type: '*',
+        act: function() { events.push('inform'); return true; }
+      });
+      var video = { paused: false, ended: false, readyState: 4, currentTime: 10, duration: 100, addEventListener: function() {} };
+
+      RT.stall.simulateTick(video);   // baseline: records lastTime
+      RT.stall.simulateTick(video);   // frozen ≥ threshold → episode opens, recover (inv 1)
+      RT.stall.simulateTick(video);   // re-invoke (inv 2) + inform escalation
+      var afterStall = events.slice();
+
+      var countBeforeProgress = events.length;
+      video.currentTime = 20;         // progress → episode closes
+      RT.stall.simulateTick(video);
+      var noFireOnProgress = events.length === countBeforeProgress;
+
+      video.currentTime = 20;         // same position again → refreezes…
+      RT.stall.simulateTick(video);   // …to the threshold in one tick → new episode (inv 1)
+      var newEpisode = events.slice(countBeforeProgress);
+
+      return { afterStall: afterStall, noFireOnProgress: noFireOnProgress, newEpisode: newEpisode };
+    });
+    expect(result.afterStall).toEqual(['recover:1', 'recover:2', 'inform']);
+    expect(result.noFireOnProgress).toBe(true);
+    expect(result.newEpisode).toEqual(['recover:1']);
+  });
+
+  // P1.11: persistence is EVENT-driven — only user-driven media events
+  // save. Engine-init changes (before the first 'playing') and our own
+  // restore (apply window) must never write, which is what the old
+  // poll-sampled save loop got wrong (it saved the engine's reset to 1.0).
+  test('speed persists only from user-driven ratechange, never engine init', async ({ page }) => {
+    await bootApp(page, { core: 'mock', url: '/#/player/svp-save' });
+    const result = await page.evaluate(async () => {
+      var video = document.createElement('video');
+      document.body.appendChild(video);
+      // Let the dom watcher hook the element before the first change.
+      await new Promise((r) => setTimeout(r, 200));
+      // Engine-init change BEFORE playing: must NOT persist.
+      video.playbackRate = 2.0;
+      await new Promise((r) => setTimeout(r, 700));
+      var afterInit = localStorage.getItem('stremio_playback_speed');
+      // User-driven: playback started, then a change.
+      video.dispatchEvent(new Event('playing'));
+      video.playbackRate = 1.5;
+      await new Promise((r) => setTimeout(r, 700));
+      return { afterInit: afterInit, persisted: localStorage.getItem('stremio_playback_speed') };
+    });
+    expect(result.afterInit).toBeNull();
+    expect(result.persisted).toBe('1.5');
+  });
+
+  // P2.1 (build-structure assertion, same documented-exception category as
+  // the chunk-edit/webtorrent reads): the patch layer ships MINIFIED into
+  // app/index.html with per-patch path markers, while the patches/ sources
+  // stay readable. Byte-level pins, not runtime behavior.
+  test('patch layer ships minified with path markers; sources stay readable', () => {
+    const { readFileSync } = require('fs');
+    const { join } = require('path');
+    const html = readFileSync(join(__dirname, '..', 'app', 'index.html'), 'utf8');
+    // Marker format: /* head/<area>/<name>.js */
+    expect(html).toContain('/* head/kernel/runtime.js */');
+    expect(html).toContain('/* head/player/stream-stats.js */');
+    // The sources' banner art is gone from the output…
+    expect(html).not.toContain('VIDAA runtime kernel');
+    expect(html).not.toContain('the ONE remote-key dispatcher');
+    // …but the readable sources still carry it.
+    const src = readFileSync(join(__dirname, '..', 'patches', 'head', 'kernel', 'runtime.js'), 'utf8');
+    expect(src).toContain('VIDAA runtime kernel');
+  });
+
+  // P0.10: the deleted subtitle family dispatched a `Player/SetProp` core
+  // action that does not exist upstream (engine props go through the player
+  // screen's engine controller, never through core.dispatch). The mock core
+  // accepted everything, so the suite stayed green while the features were
+  // no-ops. This guard fails loudly if that protocol ever comes back.
+  test('no phantom Player/SetProp core dispatches from the patch layer', async ({ page }) => {
+    await bootApp(page, { core: 'mock', mockCore: {}, url: '/#/player/phantom-check' });
+    // Let the patch layer's player-route pollers tick a few times.
+    await page.waitForTimeout(6000);
+    const dispatches = await parsedDispatches(page);
+    const phantom = dispatches.filter(function(d) {
+      return d.action === 'Player' && d.args && d.args.action === 'SetProp';
+    });
+    expect(phantom).toEqual([]);
+  });
+
+  // P0.12 regression: the modal factory's footer loop referenced an
+  // undefined `footerButtons` instead of `config.footerButtons` — a latent
+  // crash the day any patch passed footer buttons.
+  test('modal factory renders footer buttons', async ({ page }) => {
+    await bootApp(page, { core: 'none' });
+    const ok = await page.evaluate(() => {
+      var fb = window.__vidaaUI.button('Footer Action');
+      var api = window.__createVidaaModal({ id: 'footer-test-modal', title: 'Footer Test', footerButtons: [fb] });
+      var rendered = Array.prototype.slice.call(api.modal.querySelectorAll('button'))
+        .some(function(b) { return b.textContent === 'Footer Action'; });
+      api.close();
+      return rendered;
+    });
+    expect(ok).toBe(true);
   });
 
   test('localStorage keys use stremio_ prefix', async ({ page }) => {
@@ -514,8 +956,6 @@ test.describe('Integration', () => {
     await page.evaluate(() => {
       localStorage.setItem('stremio_playback_speed', '1.25');
       localStorage.setItem('stremio_volume', '0.8');
-      localStorage.setItem('stremio_subtitle_size', '120');
-      localStorage.setItem('stremio_subtitle_lang', 'eng');
     });
     const keys = await page.evaluate(() => {
       var result = [];
@@ -527,8 +967,6 @@ test.describe('Integration', () => {
     });
     expect(keys).toContain('stremio_playback_speed');
     expect(keys).toContain('stremio_volume');
-    expect(keys).toContain('stremio_subtitle_size');
-    expect(keys).toContain('stremio_subtitle_lang');
   });
 
   test('no console errors from patches during load', async ({ page }) => {

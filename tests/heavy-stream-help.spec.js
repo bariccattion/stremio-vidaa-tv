@@ -125,8 +125,11 @@ test.describe('(A) Heavy-stream choice card', () => {
   });
 
   test('__findDirectPlayStream returns a direct-play-friendly stream when core lists one', async ({ page }) => {
-    // The patch reads getState('streaming'/'player') SYNCHRONOUSLY, so the
-    // models are declared with __syncValue (raw object, no Promise).
+    // P1.1: the finder reads the REAL field (meta_details.addonStreams)
+    // through the Promise-based RT.core seam and returns the last cached
+    // pick synchronously — call twice: first warms, second reads. (The old
+    // test declared __syncValue models to satisfy the phantom synchronous
+    // getState protocol — P0.10 test debt, removed.)
     const streams = [
       { name: 'RD+', title: 'Movie.2024.2160p.HEVC.HDR.x265.mkv', url: 'http://x/4k.mkv' },
       { name: 'RD+', title: 'Movie.2024.1080p.x264.mp4', url: 'http://x/1080.mp4' }
@@ -134,10 +137,12 @@ test.describe('(A) Heavy-stream choice card', () => {
     await bootApp(page, {
       core: 'mock',
       url: '/#/player/x/st/mt/movie/tt1/tt1',
-      mockCore: { streaming: { __syncValue: { streams } }, player: { __syncValue: { streams } } },
+      mockCore: { meta_details: { addonStreams: [{ addon: { name: 'RD+' }, content: streams }] } },
     });
-    const picked = await page.evaluate(() => {
-      var s = window.__findDirectPlayStream();
+    const picked = await page.evaluate(async () => {
+      window.__findDirectPlayStream();               // warm the cache
+      await new Promise((r) => setTimeout(r, 200));  // async refresh settles
+      var s = window.__findDirectPlayStream();       // read the pick
       return s ? { url: s.url, title: s.title } : null;
     });
     expect(picked).not.toBeNull();
@@ -153,9 +158,13 @@ test.describe('(A) Heavy-stream choice card', () => {
     await bootApp(page, {
       core: 'mock',
       url: '/#/player/x/st/mt/movie/tt2/tt2',
-      mockCore: { streaming: { __syncValue: { streams } }, player: { __syncValue: { streams } } },
+      mockCore: { meta_details: { addonStreams: [{ addon: { name: 'RD+' }, content: streams }] } },
     });
-    const picked = await page.evaluate(() => window.__findDirectPlayStream());
+    const picked = await page.evaluate(async () => {
+      window.__findDirectPlayStream();
+      await new Promise((r) => setTimeout(r, 200));
+      return window.__findDirectPlayStream();
+    });
     expect(picked).toBeNull();
   });
 });

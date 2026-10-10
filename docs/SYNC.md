@@ -12,18 +12,29 @@ upstream/                  replaceable Stremio artifacts (never hand-edit)
 UPSTREAM.lock.json         version + source URL + SHA-256 of every upstream file
 patches/                   everything that makes this a VIDAA build
   head/                    patch scripts, inlined into index.html at build
-    kernel/                the shared toolbox: runtime.js (the __vidaaRuntime
+    kernel/                the shared toolbox — runtime.js (the __vidaaRuntime
                            kernel — toast, logger, store, fetchTimeout,
                            probeServer, when, onRegistryReady,
-                           serverConfigured, poll), server-url.js (the
-                           serverUrl module owning the streaming server URL
-                           lifecycle: ?server= ingest, boot push-to-core,
-                           core→localStorage mirror, health monitor + heal),
-                           keys.js (the vidaaKeys dispatcher — the ONE remote
-                           keydown listener, with name→code map, route/when
-                           gates, priorities, and sequence combos), esc.js,
-                           native-player.js, device.js, settings-store.js,
-                           diagnostics-registry.js
+                           serverConfigured, poll), core.js (RT.core — the
+                           Promise-normalized getState/dispatch/onState seam
+                           to the WASM core, with field validation), keys.js
+                           (the vidaaKeys dispatcher — the ONE remote keydown
+                           listener), dom-watch.js (RT.dom — the ONE
+                           MutationObserver: onAdded/onVideoAdded/
+                           currentVideo/onVideoChanged), playback-health.js
+                           (RT.stall — the ONE stall detector/coordinator
+                           with recover/inform strategy phases),
+                           server-url.js (the serverUrl module owning the
+                           streaming server URL lifecycle: ?server= ingest,
+                           boot push-to-core, event-driven core→localStorage
+                           mirror, health monitor + heal), native-player.js
+                           (the VERIFIED native handoff launcher + in-flight
+                           guard + shared URL memo), ui.js (esc, buttons,
+                           modals, transients, serverAdvice copy),
+                           device.js, settings-store.js (registry +
+                           schema-derived reset, incl. the wipe mode),
+                           diagnostics-registry.js, streams.js (label
+                           predicates + formatters)
     platform/ player/ subtitles/ audio/ torrents/ library/ settings/
     diagnostics/           feature patches by domain; index.template.html
                            (not filenames) fixes the inline order
@@ -31,7 +42,10 @@ patches/                   everything that makes this a VIDAA build
   custom/core.chunk.js     the worker-factory shim that swaps in the v5 engine
   index.template.html      page skeleton ({{VERSION}}, {{COMMIT}} stamped at build)
   sw.template.js           service worker (cache manifest generated at build)
-scripts/build.mjs          assembles app/ from the above; enforces the lock
+scripts/build.mjs          assembles app/ from the above; enforces the lock;
+                           minifies the patch layer at inline time (esbuild,
+                           ES5 target, output-only — patches/ sources stay
+                           readable; --no-minify for debugging builds)
 app/                       build output — this is what gets deployed (gitignored)
 ```
 
@@ -74,10 +88,12 @@ node scripts/sync-translations.mjs
 npm run sync-trackers
 
 # 4. Rebuild (refreshes UPSTREAM.lock.json hashes after intentional changes)
+#    (a fresh clone needs `npm ci` first — esbuild is a devDependency of the
+#    patch-layer minification; --no-minify ships the readable layer instead)
 node scripts/build.mjs --update-lock
 
 # 5. Verify
-npx playwright test            # 142 tests against the freshly built app/
+npx playwright test            # the full suite against the freshly built app/
 node scripts/probe-core.mjs    # boots the site headlessly; confirms the WASM core initializes
 node scripts/probe-server.mjs  # boots with a mock streaming server; confirms ?server= sync,
                                 # StreamingServer.Reload, and the core's server client (all

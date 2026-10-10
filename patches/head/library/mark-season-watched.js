@@ -1,11 +1,28 @@
-// #20 — Mark Season as Watched (split from the former 032 god-module; the settingsStore lives in kernel/settings-store.js)
-// Injects a "Mark Season Watched" button near the season selector
-// on detail pages. Dispatches MarkAsWatched for each episode.
-// ═══════════════════════════════════════════════════════════════════════
-// #20 — Mark Season as Watched
-// Injects a "Mark Season Watched" button near the season selector
-// on detail pages. Dispatches MarkAsWatched for each episode.
-// ═══════════════════════════════════════════════════════════════════════
+// #20 — Mark Season as Watched (rewritten, P0.6 2026-10-08)
+// Injects a "Mark Season Watched" button on series detail pages. Clicking
+// it dispatches MetaDetails → MarkVideoAsWatched for every episode of the
+// SELECTED season (the season the details screen is showing — read from
+// the route's ?season= param, which upstream keeps in sync).
+//
+// The rewrite replaces three broken strategies (see
+// docs/PATCHES_VS_UPSTREAM.md §2.1):
+//   • Method 1 read getState('meta')/('detail') synchronously — invalid
+//     fields, and getState always returns a Promise. Now: one awaited
+//     getState('meta_details') (the real field) reading
+//     metaItem.ready.videos — the same shape the upstream episode
+//     switcher consumes.
+//   • Method 2 blind-clicked [class*="watched"/"check"/"mark"] elements —
+//     could trigger arbitrary controls. Deleted.
+//   • Method 3 dispatched Ctx → MarkAsWatched with the SERIES id — i.e.
+//     upstream's own action at the wrong granularity, behind a button
+//     labeled "season". Deleted.
+// Feedback now counts actual dispatch RESULTS (the core rejects unknown
+// actions — worker dispatch throws — so failures are visible, not assumed).
+//
+// Injection fixes: the hash latch is set BEFORE the deferred injection
+// (the old 1 s poll vs 1.5 s timeout race injected duplicate buttons), the
+// timeout body re-checks for an existing button, and a button removed by a
+// re-render is re-injected on the next poll tick.
 (function() {
     'use strict';
 
@@ -18,167 +35,126 @@
         return RT.store.getBool(LS_KEY, false);
     }
 
-    function showFeedback(btn, success) {
+    // The details screen keeps the selected season as ?season=N on the
+    // route (replace-navigation). Absent param → season 1 (the screen's
+    // initial selection; it writes the param as soon as the user picks).
+    function currentSeason() {
+        var hash = window.location.hash || '';
+        var q = hash.indexOf('?') !== -1 ? hash.substring(hash.indexOf('?') + 1) : '';
+        var m = /(?:^|&)season=(\d+)/.exec(q);
+        return m ? parseInt(m[1], 10) : 1;
+    }
+
+    function detailRouteInfo() {
+        var m = /#\/detail\/([^/]+)\/([^/?]+)/.exec(window.location.hash || '');
+        return m ? { type: m[1], metaId: m[2] } : null;
+    }
+
+    function showFeedback(btn, text, bg) {
         var origText = btn.textContent;
         var origBg = btn.style.background;
-        btn.textContent = success ? '\u2713 Season marked' : 'Error — try again';
-        btn.style.background = success ? 'rgba(34,197,94,0.3)' : 'rgba(239,68,68,0.3)';
+        btn.textContent = text;
+        btn.style.background = bg;
         setTimeout(function() {
             btn.textContent = origText;
             btn.style.background = origBg;
-        }, 2000);
+        }, 2500);
     }
 
-    function findEpisodeElements() {
-        // Look for episode list items in the detail page
-        // Stremio's UI renders episodes as clickable items with episode info
-        var candidates = [];
-
-        // Try various selectors that match episode containers
-        var selectors = [
-            '[class*="episode"]',
-            '[class*="Episode"]',
-            '[class*="meta-row"]',
-            '[class*="video"]'
-        ];
-
-        for (var s = 0; s < selectors.length; s++) {
-            var els = document.querySelectorAll(selectors[s]);
-            if (els.length > 1) {
-                // Filter to only elements that look like episode items
-                for (var i = 0; i < els.length; i++) {
-                    var el = els[i];
-                    // Episodes usually have some text content with episode numbers
-                    var text = el.textContent || '';
-                    if (text.length > 0 && text.length < 500) {
-                        candidates.push(el);
-                    }
-                }
-                if (candidates.length > 1) break;
-                candidates = [];
-            }
-        }
-
-        return candidates;
-    }
-
-    function markSeasonWatched(btn) {
-        log('Marking season as watched...');
-
-        try {
-            if (!window.core || typeof window.core.getState !== 'function') {
-                log('Core not available');
-                showFeedback(btn, false);
+    // The action, exposed for tests. Returns a Promise<{ total, ok, fail }>.
+    // Marks every episode of the selected (or overridden) season.
+    window.__markSeasonWatched = function(seasonOverride) {
+        var season = (typeof seasonOverride === 'number') ? seasonOverride : currentSeason();
+        return new Promise(function(resolve) {
+            if (!(RT.core && RT.core.getState)) {
+                resolve({ total: 0, ok: 0, fail: 0, error: 'core unavailable' });
                 return;
             }
-
-            // Get current meta state from core
-            var state = window.core.getState('meta');
-            if (!state && window.core.getState) {
-                // Try alternative state paths
-                state = window.core.getState('detail');
-            }
-
-            // Method 1: Use core state to get episode IDs
-            if (state && state.videos && state.videos.length > 0) {
-                var videos = state.videos;
-                var marked = 0;
+            RT.core.getState('meta_details').then(function(state) {
+                var videos = state && state.metaItem && state.metaItem.ready
+                    && state.metaItem.ready.videos;
+                if (!videos || !videos.length) {
+                    resolve({ total: 0, ok: 0, fail: 0, error: 'no videos in meta_details' });
+                    return;
+                }
+                var targets = [];
                 for (var i = 0; i < videos.length; i++) {
-                    var video = videos[i];
-                    if (video && video.id) {
-                        try {
-                            window.core.dispatch({
-                                action: 'MetaDetails',
-                                args: {
-                                    action: 'MarkVideoAsWatched',
-                                    args: { id: video.id, isWatched: true }
-                                }
-                            });
-                            marked++;
-                        } catch(e) {}
-                    }
+                    var v = videos[i];
+                    if (v && v.id && v.season === season) targets.push(v.id);
                 }
-                if (marked > 0) {
-                    log('Marked', marked, 'episodes as watched via core dispatch');
-                    showFeedback(btn, true);
+                if (!targets.length) {
+                    resolve({ total: 0, ok: 0, fail: 0, error: 'season ' + season + ' has no episodes' });
                     return;
                 }
-            }
-
-            // Method 2: Click-based approach — find and interact with episode elements
-            var episodes = findEpisodeElements();
-            if (episodes.length > 0) {
-                log('Found', episodes.length, 'episode elements in DOM');
-                // Try to find checkboxes or watched indicators
-                var markedCount = 0;
-                for (var j = 0; j < episodes.length; j++) {
-                    var ep = episodes[j];
-                    // Look for a watched/checkmark button within each episode
-                    var watchBtns = ep.querySelectorAll('[class*="watched"], [class*="check"], [class*="mark"]');
-                    for (var k = 0; k < watchBtns.length; k++) {
-                        try { watchBtns[k].click(); markedCount++; } catch(e) {}
-                    }
+                var res = { total: targets.length, ok: 0, fail: 0 };
+                function settle() {
+                    if (res.ok + res.fail === res.total) resolve(res);
                 }
-                if (markedCount > 0) {
-                    log('Clicked', markedCount, 'watch buttons');
-                    showFeedback(btn, true);
-                    return;
+                for (var j = 0; j < targets.length; j++) {
+                    (function(videoId) {
+                        RT.core.dispatch({
+                            action: 'MetaDetails',
+                            args: {
+                                action: 'MarkVideoAsWatched',
+                                args: { id: videoId, isWatched: true }
+                            }
+                        }, 'meta_details').then(function() {
+                            res.ok++; settle();
+                        }).catch(function(e) {
+                            res.fail++;
+                            log('MarkVideoAsWatched rejected for', videoId, ':', (e && e.message) || e);
+                            settle();
+                        });
+                    })(targets[j]);
                 }
+            }).catch(function(e) {
+                resolve({ total: 0, ok: 0, fail: 0, error: (e && e.message) || 'getState failed' });
+            });
+        });
+    };
+
+    function markSeasonWatched(btn) {
+        var season = currentSeason();
+        log('Marking season', season, 'as watched...');
+        // Placeholder feedback while the dispatches run.
+        btn.textContent = 'Marking…';
+        window.__markSeasonWatched().then(function(res) {
+            if (res.ok > 0 && res.fail === 0) {
+                showFeedback(btn, '\u2713 ' + res.ok + ' episode' + (res.ok === 1 ? '' : 's') + ' marked',
+                    'rgba(34,197,94,0.3)');
+            } else if (res.ok > 0) {
+                showFeedback(btn, res.ok + ' marked, ' + res.fail + ' failed', 'rgba(234,179,8,0.3)');
+            } else {
+                showFeedback(btn, 'Could not mark — nothing dispatched', 'rgba(239,68,68,0.3)');
             }
-
-            // Method 3: Parse the URL hash for meta ID and construct dispatches
-            var hash = window.location.hash || '';
-            var metaMatch = hash.match(/#\/detail\/([^/]+)\/([^/]+)/);
-            if (metaMatch) {
-                var metaType = metaMatch[1];
-                var metaId = metaMatch[2];
-                log('Detected meta:', metaType, metaId);
-
-                // Try library dispatch
-                try {
-                    window.core.dispatch({
-                        action: 'Ctx',
-                        args: {
-                            action: 'MarkAsWatched',
-                            args: { id: metaId, isWatched: true }
-                        }
-                    });
-                    log('Dispatched MarkAsWatched for', metaId);
-                    showFeedback(btn, true);
-                    return;
-                } catch(e) {
-                    log('Ctx dispatch failed:', e.message);
-                }
-            }
-
-            log('Could not find episodes to mark');
-            showFeedback(btn, false);
-        } catch(e) {
-            log('Error marking season:', e.message);
-            showFeedback(btn, false);
-        }
+        });
     }
 
-    // Inject button into detail pages
+    // Inject button into series detail pages
     RT.poll(function() {
         if (!isEnabled()) return;
 
         var hash = window.location.hash || '';
         if (hash.indexOf('#/detail/') !== 0) { injectedForHash = ''; return; }
 
-        // Only inject once per hash (re-inject if hash changes)
-        if (injectedForHash === hash) return;
-        if (document.getElementById('mark-season-btn')) {
-            injectedForHash = hash;
-            return;
-        }
+        // Series only — movies/channels have no seasons to mark.
+        var info = detailRouteInfo();
+        if (!info || info.type !== 'series') { injectedForHash = ''; return; }
 
-        // Look for season selector or episode list header
+        // Already injected for this hash AND still in the DOM → done. A
+        // button removed by an upstream re-render re-injects next tick.
+        if (injectedForHash === hash && document.getElementById('mark-season-btn')) return;
+
+        // Latch BEFORE the deferred injection: the 1 s poll used to race
+        // the 1.5 s timeout into duplicate buttons (P0.6).
+        injectedForHash = hash;
+
+        // Let the details screen render first, then place the button.
         setTimeout(function() {
-            // Find a suitable injection point near the season/episode area
+            if (document.getElementById('mark-season-btn')) return;
+
             var seasonSelectors = document.querySelectorAll('[class*="season"], [class*="Season"], select');
             var injectTarget = null;
-
             for (var i = 0; i < seasonSelectors.length; i++) {
                 var el = seasonSelectors[i];
                 if (el.offsetHeight > 0 && el.offsetWidth > 0) {
@@ -186,8 +162,6 @@
                     break;
                 }
             }
-
-            // Fallback: look for episode list container
             if (!injectTarget) {
                 var epContainers = document.querySelectorAll('[class*="episode"], [class*="Episode"], [class*="videos"]');
                 for (var j = 0; j < epContainers.length; j++) {
@@ -197,40 +171,24 @@
                     }
                 }
             }
-
-            // Last resort: find the main detail content area
-            if (!injectTarget) {
-                var detailDivs = document.querySelectorAll('[class*="detail"], [class*="Detail"], [class*="meta"]');
-                for (var k = 0; k < detailDivs.length; k++) {
-                    if (detailDivs[k].scrollHeight > 200) {
-                        injectTarget = detailDivs[k];
-                        break;
-                    }
-                }
-            }
-
             if (!injectTarget) return;
 
-            var btn = document.createElement('div');
+            var UI = window.__vidaaUI;
+            var btn = UI.button('\u2713 Mark Season Watched', {
+                bg: 'rgba(123,91,245,0.2)',
+                color: '#b8a5f8'
+            });
             btn.id = 'mark-season-btn';
-            btn.setAttribute('tabindex', '0');
-            btn.style.cssText = 'display:inline-flex;align-items:center;gap:6px;margin:8px 12px;padding:8px 16px;background:rgba(123,91,245,0.2);border:1px solid rgba(123,91,245,0.4);border-radius:8px;color:#b8a5f8;font-size:0.85rem;font-weight:600;font-family:PlusJakartaSans,sans-serif;cursor:pointer;transition:background 0.2s;';
-            btn.innerHTML = '<span style="font-size:1rem;">&#10003;</span> Mark Season Watched';
-
+            // Register with the app's spatial navigation so the remote can
+            // focus the injected button.
+            btn.setAttribute('nav-id', 'mark-season-btn');
             btn.onclick = function() { markSeasonWatched(btn); };
-            btn.onkeydown = function(e) { if (e.keyCode === 13 || e.keyCode === 32) { e.preventDefault(); markSeasonWatched(btn); } };
-            btn.onfocus = function() { this.style.outline = '2px solid #7b5bf5'; };
-            btn.onblur = function() { this.style.outline = 'none'; };
-            btn.onmouseenter = function() { this.style.background = 'rgba(123,91,245,0.35)'; };
-            btn.onmouseleave = function() { this.style.background = 'rgba(123,91,245,0.2)'; };
 
-            // Insert at the beginning of the target
             if (injectTarget.firstChild) {
                 injectTarget.insertBefore(btn, injectTarget.firstChild);
             } else {
                 injectTarget.appendChild(btn);
             }
-            injectedForHash = hash;
             log('Mark Season Watched button injected');
         }, 1500);
     }, 1000, { quiet: true });
@@ -242,7 +200,7 @@
             lsKey: LS_KEY,
             defaultValue: false,
             title: 'Mark Season',
-            description: 'Adds a button to mark all episodes in a season as watched',
+            description: 'Adds a button to mark all episodes in the selected season as watched',
             onToggle: function(nowEnabled) {
                 log('Mark season toggled:', nowEnabled ? 'ON' : 'OFF');
                 if (!nowEnabled) {

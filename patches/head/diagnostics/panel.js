@@ -69,17 +69,12 @@
         return on.length ? on.join(', ') : 'none';
     }
 
-    // Shared streaming-server reachability probe — used by the diagnostic AND
-    // the helper-server setup flow so both behave identically. The runtime
-    // kernel owns the implementation (GET /settings, AbortController timeout);
-    // this global stays as the cross-patch contract.
-    if (!window.__probeStremioServer) {
-        window.__probeStremioServer = function(url, cb, timeoutMs) {
-            RT.probeServer(url, cb, timeoutMs);
-        };
-    }
+    // Shared streaming-server reachability probe — the runtime kernel owns
+    // the implementation (GET /settings, AbortController timeout). The old
+    // `__probeStremioServer` cross-patch alias was removed in P1.7:
+    // consumers call RT.probeServer directly.
     function checkServer(cb) {
-        window.__probeStremioServer(window.__STREMIO_SERVER_URL__ || '', cb);
+        RT.probeServer(window.__STREMIO_SERVER_URL__ || '', cb);
     }
 
     // ── Device section of the unified diagnostics panel (044). The big,
@@ -157,15 +152,8 @@
         window.__showVidaaDiagnostic();
     }, { window: 1500, priority: 500, suppress: true });
 
-    // Settings ▸ VIDAA launchable item.
-    RT.onRegistryReady(function() {
-        window.__registerVidaaSettingsItem({
-            id: 'vidaa-diagnostic-item',
-            type: 'button',
-            label: 'Run VIDAA Diagnostic',
-            description: 'Shows a big, screenshot-friendly panel with your TV model/firmware/chipset, whether the native-player bridge exists on this device, whether your streaming server is reachable, and the failing stream’s details. In the player you can also press Green then Red. Photograph it to report buffering issues.',
-            onClick: function() { window.__showVidaaDiagnostic(); },
-            onToggle: function() { window.__showVidaaDiagnostic(); }
-        });
-    });
+    // Settings ▸ VIDAA launchable item: REMOVED (P1.7) — blob.js's
+    // "Diagnostics" row already opens this same panel (and is the entry
+    // the settings ORDER lists); two rows for one feature appended
+    // unorderly at the bottom of the section.
 })();

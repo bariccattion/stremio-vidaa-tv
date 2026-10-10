@@ -68,6 +68,47 @@ test.describe('H1 — launcher honesty (verification required)', () => {
     expect(result).toBe(true);
   });
 
+  // P1.14: the fullscreen warning overlay must be dismissible with the
+  // remote's Back key (and Escape) — an undismissable fullscreen trap is
+  // the known projector regression this layer forbids.
+  test('warning overlay closes on Back (and the press does not navigate)', async ({ page }) => {
+    await bootApp(page, { core: 'mock', url: '/#/player/p14-back' });
+    const result = await page.evaluate(async () => {
+      window.__STREAM_INFO__ = window.__STREAM_INFO__ || {};
+      window.__showPlaybackWarning();
+      var open = !!document.getElementById('dv-warning');
+      // VIDAA Back key (461) — capture phase, like a real remote press.
+      document.dispatchEvent(new KeyboardEvent('keydown', { keyCode: 461, bubbles: true }));
+      await new Promise((r) => setTimeout(r, 100));
+      return {
+        open: open,
+        closed: !document.getElementById('dv-warning'),
+        stillPlayer: (window.location.hash || '').indexOf('#/player/') === 0
+      };
+    });
+    expect(result.open).toBe(true);
+    expect(result.closed).toBe(true);
+    expect(result.stillPlayer).toBe(true);
+  });
+
+  // P1.9: some VIDAA firmware backgrounds the page for the whole handoff
+  // without firing visibilitychange — the freeze watchdog would read that
+  // as a UI freeze and reload mid-handoff. The launcher pauses it for the
+  // verification window and resumes it on a foreground failure.
+  test('watchdog pauses during handoff verification and resumes on failure', async ({ page }) => {
+    await installFakeNative(page);
+    await bootApp(page, { core: 'mock', url: '/#/player/wd-pause' });
+    const out = await page.evaluate(async () => {
+      window.__NATIVE_VERIFY_TIMEOUT_MS__ = 500;
+      var p = window.__launchNativePlayer('http://stream.test/x.mkv');
+      var during = window.__WATCHDOG_PAUSE__;
+      await p;
+      return { during: during, after: window.__WATCHDOG_PAUSE__ };
+    });
+    expect(out.during).toBe(true);
+    expect(out.after).toBe(false);
+  });
+
   test('resolves FALSE when omi_platform is absent', async ({ page }) => {
     await bootApp(page, { core: 'mock', url: '/#/player/h1-noapi' });
     const result = await page.evaluate(async () => {
@@ -88,6 +129,32 @@ test.describe('H1 — launcher honesty (verification required)', () => {
     expect(sent.length).toBeGreaterThan(0);
     const withUrl = sent.find((m) => m && m.url === 'http://stream.test/video.mkv');
     expect(withUrl).toBeDefined();
+  });
+
+  // P1.3: launch paths from several patches (auto-native entry, video-prep
+  // stall handoff, Yellow key, dv overlay) used to race inside the
+  // verification window — six platform messages fighting over one
+  // backgrounding signal. The in-flight guard serializes them.
+  test('in-flight guard: a concurrent second launch resolves false and sends nothing', async ({ page }) => {
+    await installFakeNative(page);
+    await bootApp(page, { core: 'mock', url: '/#/player/h1-guard' });
+    const out = await page.evaluate(async () => {
+      window.__NATIVE_VERIFY_TIMEOUT_MS__ = 600;
+      const p1 = window.__launchNativePlayer('http://stream.test/first.mkv');
+      const p2 = window.__launchNativePlayer('http://stream.test/second.mkv');
+      const [r1, r2] = await Promise.all([p1, p2]);
+      return {
+        r1, r2,
+        total: (window.__sentMessages || []).length,
+        secondSent: (window.__sentMessages || []).some((m) => m && m.url === 'http://stream.test/second.mkv'),
+        memo: window.__nativeHandoff.lastUrl()
+      };
+    });
+    expect(out.r1).toBe(false);   // no backgrounding signal → honest false
+    expect(out.r2).toBe(false);   // guard rejected, no verification ran
+    expect(out.secondSent).toBe(false);   // the second launch sent NOTHING
+    expect(out.total).toBe(3);    // only the first launch's three messages
+    expect(out.memo).toBe('http://stream.test/first.mkv');  // shared memo
   });
 });
 

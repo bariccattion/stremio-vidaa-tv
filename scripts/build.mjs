@@ -36,10 +36,28 @@ const APP = join(root, 'app');
 const args = process.argv.slice(2);
 const compareRef = (args.find(a => a.startsWith('--compare-git=')) || '').split('=')[1];
 const updateLock = args.includes('--update-lock');
+// P2.1: minify the patch layer at inline time (output-only — patches/ sources
+// stay readable). --no-minify ships the readable layer (debugging builds).
+const minifyPatches = !args.includes('--no-minify');
 
 const die = (msg) => { console.error(`build: ${msg}`); process.exit(1); };
 const sha256 = (buf) => 'sha256:' + createHash('sha256').update(buf).digest('hex');
 const toLf = (s) => s.replace(/\r\n/g, '\n');
+
+// ES5 minification via esbuild. Inputs are ES5 by project rule, so this is
+// pure minification (no transpilation surprises); a parse failure in a patch
+// fails the build rather than silently shipping unminified.
+let esbuild = null;
+try { esbuild = await import('esbuild'); }
+catch { die('esbuild not installed — run npm ci (it is a devDependency)'); }
+function minifyEs5(code, what) {
+  try {
+    const r = esbuild.transformSync(code, { minify: true, target: 'es5', legalComments: 'none' });
+    return r.code.replace(/\n$/, '');
+  } catch (e) {
+    die(`esbuild failed on ${what}: ${e.message}`);
+  }
+}
 
 function git(args) {
   try { return execFileSync('git', args, { cwd: root, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 }); }
@@ -179,12 +197,22 @@ let html = toLf(readFileSync(join(root, 'patches', 'index.template.html'), 'utf8
 }
 const placeholderRe = /\{\{patches\/(head\/[0-9a-z][0-9a-z-]*(?:\/[0-9a-z][0-9a-z-]*)*\.js)\}\}/g;
 const referenced = new Set();
+let minifyStats = { files: 0, raw: 0, min: 0 };
 let ph;
 while ((ph = placeholderRe.exec(html)) !== null) {
   const patchPath = join(root, 'patches', ph[1]);
   if (!existsSync(patchPath)) die(`template references missing patch ${ph[1]}`);
   referenced.add(ph[1]);
-  const body = toLf(readFileSync(patchPath, 'utf8')).replace(/\n$/, '');
+  let body = toLf(readFileSync(patchPath, 'utf8')).replace(/\n$/, '');
+  if (minifyPatches) {
+    const min = minifyEs5(body, `patches/${ph[1]}`);
+    minifyStats.files++;
+    minifyStats.raw += body.length;
+    minifyStats.min += min.length;
+    // Path marker keeps the built artifact debuggable (which blob is which);
+    // a leading comment cannot affect parsing.
+    body = `/* ${ph[1]} */\n` + min;
+  }
   html = html.replace(ph[0], () => body);
 }
 // Reverse check: a patch file the template forgot would silently never ship.
@@ -192,12 +220,14 @@ for (const f of collectFiles(join(root, 'patches', 'head'), join(root, 'patches'
   if (!f.rel.endsWith('.js')) continue;
   if (!referenced.has(f.rel)) die(`patches/${f.rel} exists but the template never inlines it`);
 }
-if (/\{\{patches\//.test(html)) die('unresolved {{patches/...}} placeholder in template');
+if (/\{\{patches\//.test(html)) die('unresolved {{patches/...}} placeholder in the template');
 html = html.replaceAll('{{VERSION}}', VERSION);
-const stampRe = /(__BUILD_COMMIT__ = ')[a-f0-9]+(')/;
+// Stamp tolerance: minified output drops the spaces around `=` and may
+// requote the literal, so match both the readable and minified shapes.
+const stampRe = /(__BUILD_COMMIT__\s*=\s*)(['"])[a-f0-9]+\2/;
 if (!stampRe.test(html)) die('__BUILD_COMMIT__ stamp not found — platform/sw-register.js no longer matches the build stamp pattern');
-html = html.replace(stampRe, `$1${COMMIT}$2`);
-if (!(new RegExp(`__BUILD_COMMIT__ = '${COMMIT}'`)).test(html)) die('__BUILD_COMMIT__ stamp failed to land in index.html');
+html = html.replace(stampRe, (_m, head, q) => `${head}${q}${COMMIT}${q}`);
+if (!(new RegExp(`__BUILD_COMMIT__\\s*=\\s*['"]${COMMIT}['"]`)).test(html)) die('__BUILD_COMMIT__ stamp failed to land in index.html');
 writeFileSync(join(APP, 'index.html'), html);
 
 // ---------- 5. sw.js ----------
@@ -206,6 +236,9 @@ const assets = ['./', ...collectFiles(APP, APP).map(f => `./${f.rel}`).sort()];
 sw = sw.replace('{{CACHE_NAME}}', `stremio-vidaa-v${VERSION}-${COMMIT}`)
        .replace('{{ASSETS}}', JSON.stringify(assets, null, 2));
 if (/\{\{(CACHE_NAME|ASSETS)\}\}/.test(sw)) die('unresolved placeholder in sw.template.js');
+// Deliberately NOT minified: sw.js is ~10 KB served once and cached by the
+// browser, and tests/webtorrent.spec.js pins its assembled structure
+// byte-level (the documented source exception) — the win isn't worth the churn.
 writeFileSync(join(APP, 'sw.js'), sw);
 
 if (lockDirty) {
@@ -249,3 +282,5 @@ if (compareRef) {
 }
 
 console.log(`build: app/ assembled (v${VERSION}, commit ${COMMIT}, core-web ${coreVersion})`);
+if (minifyPatches) console.log(`build: patch layer minified — ${minifyStats.files} files, ${minifyStats.raw} → ${minifyStats.min} bytes (${Math.round((1 - minifyStats.min / minifyStats.raw) * 100)}% cut)`);
+else console.log("build: patch minification DISABLED (--no-minify)");

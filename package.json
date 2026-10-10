@@ -23,6 +23,7 @@
   "homepage": "https://github.com/bariccattion/stremio-vidaa-tv#readme",
   "devDependencies": {
     "@playwright/test": "^1.64.0",
+    "esbuild": "^0.28.2",
     "serve": "^14.2.6"
   }
 }

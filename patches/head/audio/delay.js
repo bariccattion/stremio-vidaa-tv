@@ -1,13 +1,9 @@
 // #18 — Audio Delay Adjustment (split from the former 032 god-module; the settingsStore lives in kernel/settings-store.js)
-// Adjustable audio offset for soundbars/AV receivers.
-// Uses DelayNode in Web Audio API when positive, or shifts playback
-// timing when negative. Range: -500ms to +500ms.
-// ═══════════════════════════════════════════════════════════════════════
-// #18 — Audio Delay Adjustment
-// Adjustable audio offset for soundbars/AV receivers.
-// Uses DelayNode in Web Audio API when positive, or shifts playback
-// timing when negative. Range: -500ms to +500ms.
-// ═══════════════════════════════════════════════════════════════════════
+// Adjustable audio offset for soundbars/AV receivers: a DelayNode in the
+// shared Web Audio graph shifts audio LATER (0…+500ms). Negative offsets
+// are physically impossible with DelayNode and the old "nudge currentTime"
+// fallback never worked — the range is now honest, 0 to +500ms (P0.9/P0.13
+// honesty pass: no placebo options).
 (function() {
     'use strict';
 
@@ -15,7 +11,7 @@
     var LS_KEY = 'stremio_audio_delay';
     var ENABLED_KEY = 'stremio_audio_delay_enabled';
     var log = RT.logger('audio-delay');
-    var MIN_DELAY = -500;
+    var MIN_DELAY = 0;
     var MAX_DELAY = 500;
     var STEP = 25; // ms per press
 
@@ -42,23 +38,21 @@
     function applyDelay(video) {
         if (!video || !isEnabled()) return;
         var delayMs = getDelay();
-
-        // Only use AudioContext DelayNode for positive delays
-        // Negative delays are not physically possible with DelayNode;
-        // we handle them by nudging video currentTime (approximate)
-        if (delayMs >= 0) {
+        // DelayNode can only delay audio (0…+500ms). Anything else stored
+        // from the old negative-support era is clamped by getDelay().
+        if (delayMs > 0) {
             setupDelayNode(video, delayMs);
         } else {
-            // For negative delay, disconnect any audio processing
-            // and rely on the OSD indicator to guide the user
             cleanupAudio();
         }
     }
 
     function setupDelayNode(video, delayMs) {
         var G = window.__vidaaAudioGraph;
-        if (delayNode && G.hasChain('delay')) {
-            // Just update existing delay
+        // Fast path: same video, live chain — just move the delay time.
+        // A different bound video means the engine swapped the <video>;
+        // ensure() tears the stale graph down and we re-attach (P0.9).
+        if (delayNode && G.hasChain('delay') && G.boundVideo() === video) {
             try { delayNode.delayTime.value = delayMs / 1000; } catch(e) {}
             return;
         }
@@ -123,8 +117,12 @@
         }
 
         if (inPlayer && isEnabled() && getDelay() > 0) {
-            var video = document.querySelector('video');
-            if (video && video.readyState >= 1 && !window.__vidaaAudioGraph.hasChain('delay')) {
+            var video = (RT.dom && RT.dom.currentVideo)
+                ? RT.dom.currentVideo()
+                : document.querySelector('video');
+            // Re-apply on engine video swaps too, not just missing chains (P0.9).
+            if (video && video.readyState >= 1
+                && (window.__vidaaAudioGraph.boundVideo() !== video || !window.__vidaaAudioGraph.hasChain('delay'))) {
                 applyDelay(video);
             }
         }
@@ -144,7 +142,9 @@
             defaultValue: false,
             onToggle: function(nowEnabled) {
                 log('Audio delay toggled:', nowEnabled ? 'ON' : 'OFF');
-                if (!nowEnabled) { cleanupAudio(); setDelay(0); }
+                // Detach the chain but KEEP the stored offset — turning the
+                // feature off must not erase the user's saved value (P0.9).
+                if (!nowEnabled) cleanupAudio();
             }
         });
         window.__registerVidaaSettingsItem({
@@ -157,11 +157,17 @@
                 return 'Audio Offset: ' + (d >= 0 ? '+' : '') + d + 'ms';
             },
             isDisabled: function() { return !isEnabled(); },
-            options: [-250, -150, -75, 0, 75, 150, 250, 500].map(function(ms) {
+            options: [0, 75, 150, 250, 500].map(function(ms) {
                 return {
-                    label: (ms >= 0 ? '+' : '') + ms + 'ms',
+                    label: '+' + ms + 'ms',
                     isSelected: function() { return getDelay() === ms; },
-                    onSelect: function() { setDelay(ms); }
+                    // Apply live: settings changes update the playing node
+                    // immediately, not just on the next hotkey press (P0.9).
+                    onSelect: function() {
+                        setDelay(ms);
+                        var v = document.querySelector('video');
+                        if (v) applyDelay(v);
+                    }
                 };
             })
         });

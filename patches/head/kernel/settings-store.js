@@ -43,26 +43,45 @@
     RT.when.flush();
 
     // ─── Schema-derived reset ───────────────────────────────────────
-    // Every registered toggle with a defaultValue returns to that default;
-    // legacy tweak keys that carry values (not booleans) are listed once
-    // here. `overrides` win last (Safe Mode's conservative profile),
-    // `exclude` protects keys (Reset Tweaks keeps the server URL).
+    // Two flavors, ONE implementation (P1.7 — zoom-correction used to ship
+    // its own divergent delete-all reset):
+    //   default       — every registered toggle returns to its defaultValue;
+    //                   legacy value-keys are listed once here.
+    //   {mode:'wipe'} — DELETE every `stremio_*` key (registered, legacy and
+    //                   unknown alike); the "Reset VIDAA Tweaks" semantics.
+    // `overrides` win last (Safe Mode's conservative profile), `exclude`
+    // protects keys (both flavors keep the server URL).
     window.__vidaaResetTweaks = function(opts) {
         opts = opts || {};
         var overrides = opts.overrides || {};
         var exclude = opts.exclude || {};
+        var wipe = opts.mode === 'wipe';
         function write(key, value) {
             if (exclude[key] || overrides[key] !== undefined) return;
+            if (wipe) { RT.store.remove(key); return; }
             RT.store.set(key, value);
         }
         for (var i = 0; i < registeredItems.length; i++) {
             var item = registeredItems[i];
             if (item.lsKey && item.defaultValue !== undefined) write(item.lsKey, item.defaultValue);
         }
-        write('stremio_audio_delay', '0');           // audio-offset value (ms)
-        write('stremio_720p_mode', 'auto');           // 720p mode cycler value
-        RT.store.remove('stremio_sub_drift_data');    // learned drift cache
-        for (var k in overrides) RT.store.set(k, overrides[k]);
+        if (wipe) {
+            // Delete EVERY stremio_* key not excluded — catches legacy keys,
+            // install stamps, and future keys the registry doesn't know.
+            try {
+                var doomed = [];
+                for (var k = 0; k < localStorage.length; k++) {
+                    var key = localStorage.key(k);
+                    if (key && key.indexOf('stremio_') === 0 && !exclude[key]) doomed.push(key);
+                }
+                for (var d = 0; d < doomed.length; d++) RT.store.remove(doomed[d]);
+            } catch (e) {}
+        } else {
+            write('stremio_audio_delay', '0');       // audio-offset value (ms)
+            write('stremio_embedded_sub_delay', '0'); // embedded-subs offset (ms)
+            write('stremio_720p_mode', 'auto');       // 720p mode cycler value
+        }
+        for (var o in overrides) RT.store.set(o, overrides[o]);
     };
 
     log('settingsStore ready (registry + schema-derived reset)');

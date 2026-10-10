@@ -91,83 +91,65 @@
         // Wait for streams to load in the DOM
         setTimeout(function() {
             try {
-                if (!window.core || typeof window.core.getState !== 'function') return;
+                if (!(RT.core && RT.core.getState)) return;
 
-                // Try to get streams from core state
+                // Try to get streams from core state (RT.core seam; the real
+                // field is meta_details — the old 'streaming'/'player' reads
+                // never returned stream lists).
                 var tryGetStreams = function(attempts) {
                     if (attempts <= 0) {
                         log('No streams found after retries');
                         return;
                     }
+                    if (!(RT.core && RT.core.getState)) return;
 
-                    var state = window.core.getState('streaming');
-                    if (!state) state = window.core.getState('player');
-
-                    // Also try to read streams from the DOM
-                    var streamElements = document.querySelectorAll('[class*="stream"], [class*="Stream"]');
-                    if ((!state || !state.streams || state.streams.length === 0) && streamElements.length === 0) {
-                        setTimeout(function() { tryGetStreams(attempts - 1); }, 1000);
-                        return;
-                    }
-
-                    var streams = [];
-                    if (state && state.streams) {
-                        streams = state.streams;
-                    }
-
-                    if (streams.length === 0) {
-                        log('No stream data available from core');
-                        return;
-                    }
-
-                    processedUrls[hash] = true;
-
-                    // Score and sort
-                    var scored = [];
-                    for (var i = 0; i < streams.length; i++) {
-                        scored.push({ index: i, stream: streams[i], score: scoreStream(streams[i]) });
-                    }
-                    scored.sort(function(a, b) { return b.score - a.score; });
-
-                    var best = scored[0];
-                    if (!best || !best.stream) return;
-
-                    var bestName = best.stream.title || best.stream.name || best.stream.description || ('Stream #' + (best.index + 1));
-                    log('Best stream selected:', bestName, '(score:', best.score.toFixed(1) + ')');
-                    showToast('Auto-playing: ' + bestName.substring(0, 60));
-
-                    // Try to auto-play by clicking the stream element or dispatching to core
-                    try {
-                        // Method 1: Click the matching stream element in DOM
-                        if (streamElements.length > best.index) {
-                            streamElements[best.index].click();
-                            log('Clicked stream element at index', best.index);
+                    RT.core.getState('meta_details').then(function(state) {
+                        // meta_details.addonStreams = [{addon, content: [streams]}]
+                        var streams = [];
+                        if (state && Array.isArray(state.addonStreams)) {
+                            for (var g = 0; g < state.addonStreams.length; g++) {
+                                var content = state.addonStreams[g] && state.addonStreams[g].content;
+                                if (Array.isArray(content)) {
+                                    for (var c = 0; c < content.length; c++) streams.push(content[c]);
+                                }
+                            }
+                        }
+                        if (streams.length === 0) {
+                            setTimeout(function() { tryGetStreams(attempts - 1); }, 1000);
                             return;
                         }
 
-                        // Method 2: Dispatch to core to play the stream
-                        if (window.core && window.core.dispatch && best.stream.url) {
-                            window.core.dispatch({
-                                action: 'StreamClicked',
-                                args: { stream: best.stream }
-                            });
-                            log('Dispatched StreamClicked to core');
-                            return;
-                        }
+                        processedUrls[hash] = true;
 
-                        // Method 3: Navigate to player URL if available
+                        // Score and sort
+                        var scored = [];
+                        for (var i = 0; i < streams.length; i++) {
+                            scored.push({ index: i, stream: streams[i], score: scoreStream(streams[i]) });
+                        }
+                        scored.sort(function(a, b) { return b.score - a.score; });
+
+                        var best = scored[0];
+                        if (!best || !best.stream) return;
+
+                        var bestName = best.stream.title || best.stream.name || best.stream.description || ('Stream #' + (best.index + 1));
+                        log('Best stream selected:', bestName, '(score:', best.score.toFixed(1) + ')');
+                        showToast('Auto-playing: ' + bestName.substring(0, 60));
+
+                        // The ONLY honest play path: navigate the app's own
+                        // deepLink for the stream (what a click on the row
+                        // does). The old DOM-click mapped a core index onto
+                        // an unrelated element list, and the 'StreamClicked'
+                        // core action does not exist upstream (P0.10/P1.8).
                         if (best.stream.deepLinks && best.stream.deepLinks.player) {
                             window.location.hash = best.stream.deepLinks.player;
                             log('Navigated to player deepLink');
-                            return;
+                        } else {
+                            log('Best stream has no player deepLink — leaving selection to the user');
+                            processedUrls[hash] = false;
                         }
-
-                        log('Could not auto-play — no suitable dispatch method');
-                        processedUrls[hash] = false; // allow retry
-                    } catch(e) {
-                        log('Auto-play dispatch failed:', e.message);
-                        processedUrls[hash] = false;
-                    }
+                    }).catch(function(e) {
+                        log('meta_details read failed:', e.message);
+                    });
                 };
 
                 tryGetStreams(5);

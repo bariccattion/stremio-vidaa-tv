@@ -28,14 +28,32 @@
         try { if (node && ctx) node.connect(ctx.destination); } catch(e) {}
     }
 
+    // An AudioContext created outside a user gesture (our polls) can start
+    // 'suspended'; once createMediaElementSource reroutes the video's audio
+    // into it, a suspended context is TOTAL SILENCE. Keep trying to resume —
+    // at every ensure() and on every statechange (P0.9).
+    function resumeAudio() {
+        if (!ctx || typeof ctx.resume !== 'function') return;
+        if (ctx.state !== 'suspended') return;
+        try {
+            var p = ctx.resume();
+            if (p && typeof p.catch === 'function') p.catch(function() {});
+        } catch(e) {}
+    }
+
     // Ensure a live context + source for this video. Switching videos tears
     // the old graph down first (one MediaElementSource per element, ever).
     function ensure(video) {
         if (!video) return null;
-        if (ctx && source && attachedVideo === video) return { ctx: ctx, source: source };
+        if (ctx && source && attachedVideo === video && video.isConnected) {
+            resumeAudio();
+            return { ctx: ctx, source: source };
+        }
         teardown();
         try {
             ctx = new (window.AudioContext || window.webkitAudioContext)();
+            ctx.onstatechange = function() { resumeAudio(); };
+            resumeAudio();
             source = ctx.createMediaElementSource(video);
             attachedVideo = video;
             rebuild();
@@ -92,6 +110,12 @@
         attach: attach,
         detach: detach,
         teardown: teardown,
+        resume: resumeAudio,
+        // Consumers gate on the BOUND video, not just chain presence: the
+        // engine recreates the <video> on every load, and a chain bound to
+        // a detached element processes silence (P0.9).
+        boundVideo: function() { return attachedVideo; },
+        context: function() { return ctx; },
         hasChain: function(id) {
             for (var i = 0; i < chains.length; i++) if (chains[i].id === id) return true;
             return false;

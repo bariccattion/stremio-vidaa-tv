@@ -36,10 +36,20 @@
     var clientLoading = false;
     var activeTorrent = null;
     var statsInterval = null;
-    var lastInterceptedSrc = '';
+    // Dedupe key: the torrent's infoHash, NOT the magnet string. The engine's
+    // magnet URI and the core-state magnet we construct from infoHash differ
+    // textually for the same torrent — string dedupe let BOTH ignition polls
+    // fire, destroying/re-adding the torrent mid-metadata (P0.7).
+    var lastInterceptedHash = '';
     var swRegistration = null;
     var peerStallTimer = null;
     var stallCardEl = null;
+    var videoErrorListener = null;
+
+    function magnetInfoHash(url) {
+        var m = /urn:btih:([a-z0-9]+)/i.exec(url || '');
+        return m ? m[1].toLowerCase() : '';
+    }
 
     function isEnabled() {
         return RT.store.getBool(LS_KEY, false);
@@ -131,6 +141,13 @@
     function destroyClient() {
         if (statsInterval) { clearInterval(statsInterval); statsInterval = null; }
         cancelPeerStallWatchdog();
+        if (videoErrorListener) {
+            try {
+                var v = document.querySelector('video');
+                if (v) v.removeEventListener('error', videoErrorListener);
+            } catch(e) {}
+            videoErrorListener = null;
+        }
         if (activeTorrent) {
             try { activeTorrent.destroy(); } catch(e) {}
             activeTorrent = null;
@@ -324,17 +341,29 @@
             if (failEl) failEl.textContent = "Can't stream this file";
             showHonestCard("Can't stream this file in the TV browser (codec/container). Try another source, or use debrid / a streaming server.");
         }
+        // Codec/container failures surface as <video> error events — without
+        // this listener they bypassed streamFailed entirely (P0.7).
+        videoErrorListener = function() {
+            var code = (videoEl.error && videoEl.error.code) || 0;
+            streamFailed(new Error('video error code ' + code));
+        };
         try {
             if (typeof videoFile.streamTo === 'function') {
-                videoFile.streamTo(videoEl, function(err) {
-                    if (err) { streamFailed(err); return; }
-                    log('Streaming started via streamTo');
-                    videoEl.play().catch(function() {});
-                });
+                // Vendored webtorrent 3.0.21's streamTo(t) takes ONE argument:
+                // it assigns t.src = this.streamURL and returns the element.
+                // There is no callback — an older (el, cb) call shape had its
+                // callback silently dropped, so play() never ran on this path.
+                videoFile.streamTo(videoEl);
+                log('Streaming started via streamTo');
+                videoEl.addEventListener('error', videoErrorListener);
+                var p = videoEl.play();
+                if (p && typeof p.catch === 'function') p.catch(function() {});
             } else if (videoFile.streamURL) {
                 log('streamTo unavailable — falling back to streamURL');
                 videoEl.src = videoFile.streamURL;
-                videoEl.play().catch(function() {});
+                videoEl.addEventListener('error', videoErrorListener);
+                var p2 = videoEl.play();
+                if (p2 && typeof p2.catch === 'function') p2.catch(function() {});
             } else {
                 streamFailed(new Error('no streamTo/streamURL on file'));
             }
@@ -387,10 +416,11 @@
         if (!video) return;
 
         var src = video.currentSrc || video.src || '';
-        if (!src || src === lastInterceptedSrc) return;
-        if (!isMagnet(src)) return;
+        if (!src || !isMagnet(src)) return;
+        var hash = magnetInfoHash(src);
+        if (!hash || hash === lastInterceptedHash) return;
 
-        lastInterceptedSrc = src;
+        lastInterceptedHash = hash;
         log('Magnet URI detected in video source');
 
         if (!isEnabled()) {
@@ -406,52 +436,61 @@
         streamMagnet(src, video);
     }, 500, { route: 'player', quiet: false });
 
-    // Also try to intercept via core state
+    // Also try to intercept via core state (Promise-style via the RT.core
+    // seam — the pre-P1.1 version consumed getState synchronously, so this
+    // poll never actually fired).
     RT.poll(function() {
         try {
-            var state = window.core && window.core.getState('player');
-            if (!state) return;
-            var streamUrl = null;
-            if (state.stream && state.stream.url) streamUrl = state.stream.url;
-            else if (state.stream && state.stream.infoHash) {
-                // Torrent stream detected via infoHash — construct magnet
-                streamUrl = 'magnet:?xt=urn:btih:' + state.stream.infoHash;
-                if (state.stream.fileIdx !== undefined) streamUrl += '&so=' + state.stream.fileIdx;
-            }
-            if (!streamUrl || !isMagnet(streamUrl)) return;
-            if (streamUrl === lastInterceptedSrc) return;
+            if (!(RT.core && RT.core.getState)) return;
+            RT.core.getState('player').then(function(state) {
+                if (!state) return;
+                var streamUrl = null;
+                if (state.stream && state.stream.url) streamUrl = state.stream.url;
+                else if (state.stream && state.stream.infoHash) {
+                    // Torrent stream detected via infoHash — construct magnet
+                    streamUrl = 'magnet:?xt=urn:btih:' + state.stream.infoHash;
+                    if (state.stream.fileIdx !== undefined) streamUrl += '&so=' + state.stream.fileIdx;
+                }
+                if (!streamUrl || !isMagnet(streamUrl)) return;
+                // Same infoHash dedupe as the video-src poll: a full magnet URI and
+                // this constructed one are the SAME torrent (P0.7 double-ignition).
+                var hash2 = magnetInfoHash(streamUrl);
+                if (!hash2 || hash2 === lastInterceptedHash) return;
 
-            lastInterceptedSrc = streamUrl;
-            log('Magnet/infoHash detected in core state');
+                lastInterceptedHash = hash2;
+                log('Magnet/infoHash detected in core state');
 
-            var video = document.querySelector('video');
-            if (!video) return;
+                var video = document.querySelector('video');
+                if (!video) return;
 
-            if (!isEnabled()) {
-                showDisabledMessage();
-                return;
-            }
+                if (!isEnabled()) {
+                    showDisabledMessage();
+                    return;
+                }
 
-            video.pause();
-            video.removeAttribute('src');
-            video.load();
+                video.pause();
+                video.removeAttribute('src');
+                video.load();
 
-            streamMagnet(streamUrl, video);
+                streamMagnet(streamUrl, video);
+            }).catch(function() {});
         } catch(e) {}
     }, 1000, { route: 'player', quiet: false });
 
     // ─── Cleanup on Navigation Away from Player ───────────────────
+    // Route-transition bookkeeping through the scheduler (was a raw
+    // setInterval) — cleanup is background work, so quiet:true is fine.
     var wasInPlayer = false;
-    setInterval(function() {
+    RT.poll(function() {
         var hash = window.location.hash || '';
         var inPlayer = hash.indexOf('#/player/') === 0;
         if (wasInPlayer && !inPlayer) {
             log('Left player — cleaning up');
             destroyClient();
-            lastInterceptedSrc = '';
+            lastInterceptedHash = '';
         }
         wasInPlayer = inPlayer;
-    }, 1000);
+    }, 1000, { quiet: true });
 
     // ─── Info / Red Button Shows Overlay ──────────────────────────
     // Some Hisense projector remotes (55Q6QV, M2 Pro, PX3-Pro, C2) have no

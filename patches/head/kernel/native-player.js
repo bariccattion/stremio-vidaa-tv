@@ -125,8 +125,9 @@
     // every (always-"true") handoff. That is removed entirely.
     function markAsWatched(handoff) {
         try {
-            if (!window.core || !handoff || !handoff.hash) return;
-            window.core.getState('player').then(function(playerState) {
+            if (!(window.__vidaaRuntime.core && window.__vidaaRuntime.core.getState)) return;
+            if (!handoff || !handoff.hash) return;
+            window.__vidaaRuntime.core.getState('player').then(function(playerState) {
                 if (!playerState) return;
                 var metaId = null, videoId = null;
                 try {
@@ -134,15 +135,14 @@
                     if (playerState.video) videoId = playerState.video.id;
                 } catch(e) {}
                 if (metaId) {
-                    try {
-                        window.core.dispatch({
-                            action: 'Ctx',
-                            args: { action: 'MarkAsWatched', args: { id: metaId, videoId: videoId, isWatched: true } }
-                        }, 'ctx');
+                    window.__vidaaRuntime.core.dispatch({
+                        action: 'Ctx',
+                        args: { action: 'MarkAsWatched', args: { id: metaId, videoId: videoId, isWatched: true } }
+                    }, 'ctx').then(function() {
                         watchedLog('Marked as watched (VERIFIED handoff):', metaId, videoId);
-                    } catch(e) {
-                        watchedLog('MarkAsWatched dispatch failed:', e.message);
-                    }
+                    }).catch(function(e) {
+                        watchedLog('MarkAsWatched dispatch rejected:', e.message);
+                    });
                 }
             }).catch(function(e) {
                 watchedLog('Failed to get player state:', e.message);
@@ -153,6 +153,23 @@
     function watchedTrackingEnabled() {
         return RT.store.getBool(HANDOFF_KEY, false);
     }
+
+    // ── In-flight guard + shared URL memo (P1.3) ──────────────────────
+    // Every launch path (auto-native entry, video-prep's stall handoff, the
+    // Yellow key, the dv-hdr overlay) funnels through __launchNativePlayer.
+    // Without the guard, two call sites racing inside the 2 s verification
+    // window sent six platform messages and fought over the backgrounding
+    // signal. The URL memo is shared so auto-native's route-exit clearing
+    // and re-attempt logic sees launches from any call site.
+    var handoffInFlight = false;
+    var lastHandoffUrl = '';
+
+    window.__nativeHandoff = {
+        inFlight: function() { return handoffInFlight; },
+        lastUrl: function() { return lastHandoffUrl; },
+        setLastUrl: function(u) { lastHandoffUrl = u || ''; },
+        clearLastUrl: function() { lastHandoffUrl = ''; }
+    };
 
     // Shared recovery helper for ALL auto/recovery call sites. When a handoff
     // fails (verified false), callers MUST un-pause the browser <video> so the
@@ -214,19 +231,33 @@
             : (window.__NATIVE_VERIFY_TIMEOUT_MS__ != null ? window.__NATIVE_VERIFY_TIMEOUT_MS__ : DEFAULT_VERIFY_MS);
         var watchedDelay = opts.watchedDelayMs != null ? opts.watchedDelayMs : DEFAULT_WATCHED_DELAY_MS;
 
+        // In-flight guard (P1.3): exactly one launch may occupy the
+        // verification window; concurrent callers resolve false immediately.
+        if (handoffInFlight) {
+            log.warn('handoff already in flight — ignoring duplicate launch');
+            return Promise.resolve(false);
+        }
+
         if (!hasNative()) {
             log('omi_platform unavailable — native player not supported on this device');
             return Promise.resolve(false);
         }
         if (!url) {
-            var video = document.querySelector('video');
-            url = video ? video.currentSrc || video.src : null;
+            var video0 = document.querySelector('video');
+            url = video0 ? video0.currentSrc || video0.src : null;
         }
         if (!url) { log('No stream URL found'); return Promise.resolve(false); }
 
         var title = getPlayerTitle() || 'Stremio';
         var mimeType = guessNativeMimeType(url);
         log('Attempting native handoff (title:', title + '):', String(url).substring(0, 100));
+        lastHandoffUrl = url;
+        handoffInFlight = true;
+        // Pause the freeze watchdog while verifying (P1.9): some VIDAA
+        // firmware backgrounds the page for the whole handoff without
+        // firing visibilitychange — the watchdog would read that as a UI
+        // freeze and reload mid-handoff.
+        window.__WATCHDOG_PAUSE__ = true;
 
         // Arm verification BEFORE sending so we don't miss a fast backgrounding.
         var verifyPromise = verifyBackgrounding(verifyMs);
@@ -247,7 +278,15 @@
             }
         }
 
+        function settleWatchdog() {
+            // Resume the watchdog unless the page actually stayed hidden
+            // (the watchdog's own visibilitychange handler manages it then).
+            window.__WATCHDOG_PAUSE__ = (document.visibilityState === 'hidden' || document.hidden === true);
+        }
+
         return verifyPromise.then(function(opened) {
+            handoffInFlight = false;
+            settleWatchdog();
             if (!opened) {
                 log.warn('No backgrounding signal within ' + verifyMs + 'ms — treating handoff as FAILED.');
                 return false;
@@ -269,6 +308,10 @@
                 } catch(e) {}
             }
             return true;
+        }, function() {
+            handoffInFlight = false;
+            settleWatchdog();
+            return false;
         });
     };
 

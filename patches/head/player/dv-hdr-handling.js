@@ -24,48 +24,46 @@
         return RT.store.getBool(WARN_KEY, false);
     }
 
-    // Monitor video element for playback failures — warn only on actual failure.
-    // RT.poll gates: player route only, silent under Quiet Player Mode.
-    var watchInterval = null;
-
-    function startPlaybackWatch() {
-        if (watchInterval) return;
-        watchInterval = RT.poll(function() {
-            if (!isWarningEnabled()) return; // User disabled playback warning
-            var video = document.querySelector('video');
-            if (!video) return;
-
-            // Check for >4K resolution (decoder limit)
-            if (video.videoWidth > 4096 || video.videoHeight > 2160) {
-                log.warn('Resolution ' + video.videoWidth + 'x' + video.videoHeight + ' exceeds 4K — may cause issues');
-                window.__STREAM_INFO__.oversize = true;
-            }
-
-            // Detect stalled DV playback (black screen = video loads but no frames render)
-            if (video.readyState >= 2 && video.currentTime === 0 && !video.paused && !video.ended) {
-                // Video thinks it's playing but stuck at 0 — possible black screen
-                if (!window.__STREAM_INFO__.stallCheck) {
-                    window.__STREAM_INFO__.stallCheck = Date.now();
-                } else if (Date.now() - window.__STREAM_INFO__.stallCheck > 8000) {
-                    // 8 seconds with no progress — likely a black screen
-                    log.warn('Playback stalled — possible codec/container issue');
-                    showPlaybackWarning();
-                    window.__STREAM_INFO__.stallCheck = null;
-                }
-            } else {
+    // Stuck-at-start detection lives in the kernel stall coordinator since
+    // P1.2 (one detector, one actor per episode); this patch registers the
+    // inform strategy that shows the fullscreen warning when the user
+    // opted in. The old self-owned 2 s poll duplicated auto-rebuffer's
+    // frozen-time detector on an overlapping condition (t===0), and the
+    // rebuffer seek silently disarmed it.
+    if (RT.stall) {
+        RT.stall.register({
+            id: 'dv-overlay',
+            phase: 'inform',
+            priority: 300,
+            type: 'start',
+            when: isWarningEnabled,
+            act: function() {
+                // Keep the stallCheck flag semantics for error-messages' DV
+                // branch (a crit error arriving mid-stall gets DV-specific copy).
+                window.__STREAM_INFO__.stallCheck = Date.now();
+                showPlaybackWarning();
                 window.__STREAM_INFO__.stallCheck = null;
+                return true;
             }
-        }, 2000, { route: 'player' });
+        });
     }
 
     // Watch for player route (bookkeeping — must keep ticking under Quiet
-    // Player Mode, hence quiet:false)
+    // Player Mode, hence quiet:false): reset stream info on player entry,
+    // clear the force-transcode flag on exit, and track the >4K decoder
+    // limit (feeds `tooHeavy` analysis in the stall strategies).
     var wasInPlayer = false;
     RT.poll(function() {
         var inPlayer = RT.inPlayer();
         if (inPlayer) {
             if (!wasInPlayer) { window.__STREAM_INFO__ = {}; }
-            startPlaybackWatch();
+            if (isWarningEnabled()) {
+                var video = document.querySelector('video');
+                if (video && (video.videoWidth > 4096 || video.videoHeight > 2160)) {
+                    log.warn('Resolution ' + video.videoWidth + 'x' + video.videoHeight + ' exceeds 4K — may cause issues');
+                    window.__STREAM_INFO__.oversize = true;
+                }
+            }
         }
         if (!inPlayer) { window.__FORCE_TRANSCODE__ = false; }
         wasInPlayer = inPlayer;
@@ -107,8 +105,7 @@
         // Only advertise transcode as a remedy when a REAL streaming server is
         // configured. Bare-TV / Real-Debrid users have no server, so telling them
         // to "transcode via your streaming server" is a dead end.
-        var srvUrlW = window.__STREMIO_SERVER_URL__ || '';
-        var serverReadyW = srvUrlW && srvUrlW !== 'http://127.0.0.1:11470';
+        var serverReadyW = RT.serverConfigured();
         var detail = isOversize
             ? 'This stream is ' + esc(res) + ' which exceeds your TV\'s 4K decode limit. Try a 2160p or 1080p source instead.'
             : 'This stream (' + esc(codec) + ' @ ' + esc(res) + ') is not rendering. The container format may be incompatible. Try a 1080p or MP4 version of this title'
@@ -207,6 +204,20 @@
         setTimeout(function() { transBtn.focus(); }, 100);
     }
     window.__showPlaybackWarning = showPlaybackWarning;
+
+    // P1.14: Back/Escape close the overlay (priority-1000 modal-close
+    // pattern, same as the diagnostics panel) — a fullscreen overlay the
+    // remote can't dismiss was the exact projector regression this layer
+    // forbids. The press is suppressed so the app never navigates away
+    // underneath the closing overlay.
+    window.__vidaaKeys.on(['back', 'escape'], function() {
+        var el = document.getElementById('dv-warning');
+        if (el) {
+            el.remove();
+            window.__STREAM_INFO__.stallCheck = null;
+            log('warning overlay dismissed via Back/Escape');
+        }
+    }, { priority: 1000, suppress: true, when: function() { return !!document.getElementById('dv-warning'); } });
 
     // Register settings toggle
     RT.onRegistryReady(function() {

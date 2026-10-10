@@ -20,9 +20,6 @@
             'ui-and-player': 'UI + Player',
             'off': 'Off'
         };
-        var RESET_EXCLUDE_KEYS = {
-            stremio_server_url: true
-        };
 
         function readStoredMode() {
             var mode = RT.store.get(MODE_KEY, null);
@@ -141,15 +138,14 @@
         window.__show720pModePicker = window.__cycle720pMode;
 
         function performResetVidaaTweaks() {
-            try {
-                var keys = [];
-                for (var i = 0; i < localStorage.length; i++) {
-                    var key = localStorage.key(i);
-                    if (key && key.indexOf('stremio_') === 0 && !RESET_EXCLUDE_KEYS[key]) keys.push(key);
-                }
-                for (var j = 0; j < keys.length; j++) localStorage.removeItem(keys[j]);
-                sessionStorage.removeItem('stremio_install_banner_dismissed_session');
-            } catch (e) {}
+            // One reset implementation since P1.7: the kernel settingsStore's
+            // wipe mode (delete every stremio_* tweak key, keep the server
+            // URL). This used to be a private delete-all loop that drifted
+            // from the kernel's schema-derived reset.
+            if (window.__vidaaResetTweaks) {
+                window.__vidaaResetTweaks({ mode: 'wipe', exclude: { stremio_server_url: true } });
+            }
+            try { sessionStorage.removeItem('stremio_install_banner_dismissed_session'); } catch (e) {}
             location.reload();
         }
 

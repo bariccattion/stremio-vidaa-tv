@@ -1,28 +1,37 @@
+// ═══════════════════════════════════════════════════════════════════════
+// Torrent bandwidth saver (rewritten honestly, P0.8 2026-10-08).
+// ═══════════════════════════════════════════════════════════════════════
+// What this module ACTUALLY does: while a webtorrent stream plays, it
+// cancels future piece selection for byte ranges the video has already
+// played through — the client stops fetching pieces you skipped past.
+// That saves BANDWIDTH; it does NOT free memory (webtorrent's in-memory
+// chunk store keeps every downloaded piece until the torrent is
+// destroyed at player exit — no browser API can evict it earlier).
+//
+// What was removed as dishonest/broken (see docs/PATCHES_VS_UPSTREAM.md
+// P0.8): the maxConns override (it RAISED the streaming patch's
+// deliberate 5 to 10 while claiming to reduce it — the client's
+// connection policy belongs to torrents/webtorrent-streaming.js, which
+// already drops maxWebConns to 2 under heap pressure), and the heap
+// monitor (an exact duplicate of platform/memory-pressure.js: same
+// 85 % threshold, log-only). The settings id/lsKey are unchanged so
+// existing toggles and Safe Mode keep working; only the label and
+// description now tell the truth.
 (function() {
     var RT = window.__vidaaRuntime;
     var LS_KEY = 'stremio_low_memory';
     var log = RT.logger('memory');
-    var MEM_WARN_THRESHOLD = 0.85; // 85% heap usage triggers warning
 
     function isEnabled() {
         return RT.store.getBool(LS_KEY, true);
     }
 
-    function applyLowMemoryConfig() {
-        // Reduce WebTorrent buffer if client is available
-        if (window.__webtorrentClient) {
-            try {
-                if (window.__webtorrentClient.maxConns !== undefined) {
-                    window.__webtorrentClient.maxConns = 10;
-                    log('Reduced WebTorrent maxConns to 10');
-                }
-            } catch (e) {
-                log('Could not modify webtorrentClient config:', e.message);
-            }
-        }
-    }
-
+    // Cancel future selection of pieces for played-through ranges (≥30 s
+    // behind the playhead). Time→byte mapping assumes CBR within the
+    // largest file — an approximation; deselecting a slightly wrong range
+    // only wastes bandwidth, it can never corrupt playback.
     function deselectionSweep() {
+        if (!isEnabled()) return;
         if (!window.__webtorrentClient) return;
         try {
             var torrents = window.__webtorrentClient.torrents;
@@ -65,7 +74,7 @@
                         endPiece = Math.min(totalPieces - 1, endPiece);
                         if (endPiece > startPiece && torrent.deselect) {
                             torrent.deselect(startPiece, endPiece, false);
-                            log('Deselected pieces', startPiece, '-', endPiece, '(played up to', Math.round(end), 's)');
+                            log('Deselected pieces', startPiece, '-', endPiece, '(played through', Math.round(end), 's)');
                         }
                     }
                 }
@@ -75,33 +84,14 @@
         }
     }
 
-    function monitorMemory() {
-        var h = RT.heapPressure();
-        if (!h) return;
-        if (h.limit > 0 && (h.used / h.limit) > MEM_WARN_THRESHOLD) {
-            log('WARNING: High memory usage —', Math.round(h.used / 1048576), 'MB used of',
-                Math.round(h.limit / 1048576), 'MB limit (', Math.round((h.used / h.limit) * 100), '%)');
-        }
-    }
-
     function init() {
         if (!isEnabled()) {
-            log('Low memory mode disabled (set localStorage stremio_low_memory=true to enable)');
+            log('Torrent bandwidth saver disabled');
             return;
         }
-        applyLowMemoryConfig();
-        // Re-apply config when WebTorrent client becomes available
-        var clientCheckInterval = RT.poll(function() {
-            if (window.__webtorrentClient) {
-                applyLowMemoryConfig();
-                clearInterval(clientCheckInterval);
-            }
-        }, 2000, { quiet: true });
-        // Memory monitoring every 10 seconds
-        RT.poll(monitorMemory, 10000, { quiet: true });
-        // Piece deselection sweep every 30 seconds
+        // Piece deselection sweep every 30 seconds (bandwidth only — see header)
         RT.poll(deselectionSweep, 30000, { quiet: true });
-        log('Low memory mode initialised');
+        log('Torrent bandwidth saver initialised');
     }
 
     if (window.__registerCommunityToggle) {
@@ -109,13 +99,10 @@
             id: 'low-memory-toggle',
             lsKey: LS_KEY,
             defaultValue: true,
-            title: 'Low Memory Mode',
-            description: 'Reduces buffer sizes and cleans up played torrent pieces to prevent buffering on low-RAM TVs',
+            title: 'Skip Watched Torrent Pieces',
+            description: 'While a torrent stream plays, stops downloading pieces for parts you already watched (skips re-fetching after seeking back). Saves bandwidth — it does not free memory: downloaded pieces stay cached until you leave the player.',
             onToggle: function(nowEnabled) {
                 log('Toggled:', nowEnabled ? 'ON' : 'OFF');
-                if (nowEnabled) {
-                    applyLowMemoryConfig();
-                }
             }
         });
     }

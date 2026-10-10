@@ -20,11 +20,19 @@
         return RT.serverConfigured();
     }
 
-    window.__showHonestStallMessage = function() {
+    // opts.tooHeavy (from the caller's stream analysis) picks copy that
+    // matches the actual failure mode — a stalling 1080p MP4 must not be
+    // told it's a 4K problem (P0.13).
+    window.__showHonestStallMessage = function(opts) {
         if (document.getElementById('dv-honest-stall')) return;
         var now = Date.now();
         if (now - lastShownAt < 15000) return; // throttle
         lastShownAt = now;
+
+        var heavy = !!(opts && opts.tooHeavy);
+        var advice = heavy
+            ? 'This stream looks too heavy for the TV’s built-in browser. Try a 1080p or MP4 version of this title'
+            : 'This stream keeps stalling in the TV’s built-in browser. A different source of this title may play better';
 
         var card = document.createElement('div');
         card.id = 'dv-honest-stall';
@@ -33,8 +41,7 @@
 
         var msg = document.createElement('div');
         msg.style.cssText = 'font-size:14px;color:rgba(255,255,255,0.92);';
-        msg.textContent = 'This 4K stream is too heavy for the TV’s built-in browser. Try a 1080p or MP4 version of this title'
-            + (serverReady() ? ', or use your Stremio streaming server to transcode it.' : ', or set up a Stremio streaming server (Settings ▸ Server).');
+        msg.textContent = advice + window.__vidaaUI.serverAdvice(serverReady());
         card.appendChild(msg);
 
         var btn = document.createElement('button');

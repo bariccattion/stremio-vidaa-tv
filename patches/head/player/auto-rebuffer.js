@@ -1,24 +1,18 @@
+// #22 — Auto-Rebuffer on Stall (refactored onto the kernel stall
+// coordinator, P1.2). Detection (frozen currentTime ≥8 s while playing)
+// lives in kernel/playback-health.js; this patch only declares the
+// recovery strategy: seek +1 s (up to 3 attempts), then pause+re-seek,
+// then the recovery toast with a Native Player option. The coordinator
+// re-invokes the strategy every 8 s while the stall persists (ladder
+// semantics preserved) and closes the episode on progress.
 (function() {
     var RT = window.__vidaaRuntime;
     var LS_KEY = 'stremio_auto_rebuffer';
     var log = RT.logger('rebuffer');
-    var CHECK_INTERVAL = 2000;   // ms between currentTime checks
-    var STALL_THRESHOLD = 8000;  // ms of no progress = stall
     var MAX_RETRIES = 3;
 
     function isEnabled() {
         return RT.store.getBool(LS_KEY, true);
-    }
-
-    var stallTimer = 0;
-    var lastTime = null;
-    var retries = 0;
-    var monitorInterval = null;
-    var activeVideo = null;
-
-    function resetStall() {
-        stallTimer = 0;
-        retries = 0;
     }
 
     function showRecoveryToast(video) {
@@ -54,7 +48,7 @@
                 // playback + advises.
                 nativeBtn.textContent = 'Trying…';
                 nativeBtn.disabled = true;
-                var v = (typeof video !== 'undefined' && video) ? video : document.querySelector('video');
+                var v = video || document.querySelector('video');
                 var src = v ? v.currentSrc || v.src : null;
                 window.__handoffAndRecover(v, src, function() {
                     toast.remove();
@@ -73,116 +67,67 @@
         setTimeout(function() { if (toast.parentNode) toast.remove(); }, 12000);
     }
 
-    function attemptRebuffer(video) {
-        retries++;
-        log('Stall detected (retry', retries, '/ ' + MAX_RETRIES + ')');
+    // Ladder bookkeeping per stall episode (the coordinator assigns each
+    // episode a fresh id; retries reset with it).
+    var episodeId = null;
+    var retries = 0;
 
-        if (retries > MAX_RETRIES) {
-            log('Max retries reached — offering recovery options');
-            showRecoveryToast(video);
-            // Reset so we try again if the user keeps waiting — never leave them stuck.
-            resetStall();
-            return;
-        }
-
-        // Try seeking forward 1 second first (less disruptive than reload)
-        try {
-            var seekTarget = video.currentTime + 1;
-            if (video.duration && seekTarget < video.duration) {
-                log('Seeking forward 1 second to', seekTarget);
-                video.currentTime = seekTarget;
-            } else {
-                // Pause and re-seek to current position to trigger re-buffer.
-                // Avoid video.load() — it resets the source entirely, which
-                // kills torrent streams and forces a full re-download.
-                log('Pause + re-seek to trigger rebuffer');
-                var pos = video.currentTime;
-                video.pause();
-                video.currentTime = pos;
-                var p = video.play();
-                if (p && p.catch) p.catch(function(e) { log('play() rejected:', e.message); });
-            }
-        } catch (e) {
-            log('Rebuffer attempt error:', e.message);
-        }
-    }
-
-    function checkStall() {
-        if (!RT.inPlayer()) return;
-
-        var video = document.querySelector('video');
-        if (!video) { lastTime = null; return; }
-
-        // New video element
-        if (video !== activeVideo) {
-            activeVideo = video;
-            lastTime = null;
-            resetStall();
-            video.addEventListener('playing', resetStall);
-            video.addEventListener('seeked', resetStall);
-        }
-
-        if (video.paused || video.ended || video.readyState < 2) {
-            lastTime = video.currentTime;
-            return;
-        }
-
-        if (lastTime === null) {
-            lastTime = video.currentTime;
-            return;
-        }
-
-        if (video.currentTime === lastTime) {
-            stallTimer += CHECK_INTERVAL;
-            if (stallTimer >= STALL_THRESHOLD) {
-                attemptRebuffer(video);
-                stallTimer = 0; // reset timer between retries
-            }
-        } else {
-            // Progress made — reset
-            if (stallTimer > 0) log('Stall cleared — playback resumed');
-            stallTimer = 0;
+    function ladderStep(video, ep) {
+        if (ep.id !== episodeId) {
+            episodeId = ep.id;
             retries = 0;
         }
+        retries++;
+        log('Stall detected (attempt', retries + ')');
 
-        lastTime = video.currentTime;
-    }
-
-    function startMonitor() {
-        if (monitorInterval) return;
-        // Stall recovery is playback-critical: route-gated but never
-        // silenced by Quiet Player Mode.
-        monitorInterval = RT.poll(checkStall, CHECK_INTERVAL, { route: 'player', quiet: false });
-        log('Stall monitor started');
-    }
-
-    function stopMonitor() {
-        if (monitorInterval) {
-            clearInterval(monitorInterval);
-            monitorInterval = null;
-        }
-        lastTime = null;
-        resetStall();
-        log('Stall monitor stopped');
-    }
-
-    function onHashChange() {
-        if (!isEnabled()) return;
-        if (RT.inPlayer()) {
-            startMonitor();
-        } else {
-            stopMonitor();
-        }
-    }
-
-    function init() {
-        if (!isEnabled()) {
-            log('Auto-rebuffer disabled (set localStorage stremio_auto_rebuffer=true to enable)');
+        if (retries <= MAX_RETRIES) {
+            // Try seeking forward 1 second first (less disruptive than reload)
+            try {
+                var seekTarget = video.currentTime + 1;
+                if (video.duration && seekTarget < video.duration) {
+                    log('Seeking forward 1 second to', seekTarget);
+                    video.currentTime = seekTarget;
+                } else {
+                    // Pause and re-seek to current position to trigger re-buffer.
+                    // Avoid video.load() — it resets the source entirely, which
+                    // kills torrent streams and forces a full re-download.
+                    log('Pause + re-seek to trigger rebuffer');
+                    var pos = video.currentTime;
+                    video.pause();
+                    video.currentTime = pos;
+                    var p = video.play();
+                    if (p && p.catch) p.catch(function(e) { log('play() rejected:', e.message); });
+                }
+            } catch (e) {
+                log('Rebuffer attempt error:', e.message);
+            }
             return;
         }
-        window.addEventListener('hashchange', onHashChange);
-        onHashChange();
-        log('Auto-rebuffer on stall initialised');
+
+        // Exhausted: offer recovery options — re-offered roughly every 32 s
+        // (every 4th post-exhaustion invocation) while the stall persists,
+        // matching the old ~32 s cycle. Never leaves the user stuck.
+        if ((retries - MAX_RETRIES) % 4 === 1) {
+            log('Max retries reached — offering recovery options');
+            showRecoveryToast(video);
+        }
+    }
+
+    if (RT.stall) {
+        RT.stall.register({
+            id: 'auto-rebuffer',
+            phase: 'recover',
+            priority: 200,
+            type: '*',           // frozen, start (t≈0) and early alike
+            when: isEnabled,
+            act: function(video, ep) {
+                ladderStep(video, ep);
+                return true;     // claimed — re-invoked while the stall persists
+            }
+        });
+        log('registered on the stall coordinator');
+    } else {
+        log.error('stall coordinator unavailable — auto-rebuffer inactive');
     }
 
     if (window.__registerCommunityToggle) {
@@ -194,16 +139,9 @@
             description: 'Detects playback stalls and automatically attempts to resume without user intervention',
             onToggle: function(nowEnabled) {
                 log('Toggled:', nowEnabled ? 'ON' : 'OFF');
-                if (nowEnabled) {
-                    window.addEventListener('hashchange', onHashChange);
-                    onHashChange();
-                } else {
-                    stopMonitor();
-                    window.removeEventListener('hashchange', onHashChange);
-                }
             }
         });
     }
 
-    init();
+    log('Auto-rebuffer strategy initialised');
 })();

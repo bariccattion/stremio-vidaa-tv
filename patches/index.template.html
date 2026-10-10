@@ -33,12 +33,15 @@
     <!-- This file is the patch MANIFEST: execution order = placeholder order
          (never filename order), and the build fails if a patches/head file is
          missing here, or a kernel/ patch inlines after a feature patch. -->
-    <script>
+<script>
 {{patches/head/kernel/runtime.js}}
-    </script>
-    <script>
+</script>
+<script>
+{{patches/head/kernel/core.js}}
+</script>
+<script>
 {{patches/head/kernel/server-url.js}}
-    </script>
+</script>
     <script>
 {{patches/head/kernel/keys.js}}
     </script>
@@ -80,6 +83,12 @@
 </script>
 <script>
 {{patches/head/kernel/streams.js}}
+</script>
+<script>
+{{patches/head/kernel/dom-watch.js}}
+</script>
+<script>
+{{patches/head/kernel/playback-health.js}}
 </script>
 <script>
 {{patches/head/platform/sw-register.js}}
@@ -130,16 +139,13 @@
 {{patches/head/player/speed-volume-persist.js}}
 </script>
 <script>
-{{patches/head/subtitles/size-persist.js}}
-</script>
-<script>
-{{patches/head/subtitles/language-memory.js}}
-</script>
-<script>
-{{patches/head/subtitles/off-option.js}}
-</script>
-<script>
 {{patches/head/subtitles/full-filenames.js}}
+</script>
+<script>
+{{patches/head/subtitles/embedded-delay.js}}
+</script>
+<script>
+{{patches/head/player/external-streams.js}}
 </script>
 <script>
 {{patches/head/player/prefetch-next-episode.js}}
@@ -162,10 +168,7 @@
     <script>
 {{patches/head/library/mark-season-watched.js}}
     </script>
-    <script>
-{{patches/head/subtitles/drift-fix.js}}
-    </script>
-    <script>
+<script>
 {{patches/head/settings/settings-ui.js}}
 </script>
 

@@ -48,28 +48,52 @@
         return false;
     }
 
-    window.__findDirectPlayStream = function() {
-        try {
-            if (!window.core || typeof window.core.getState !== 'function') return null;
-            var state = window.core.getState('streaming');
-            if (!state || !state.streams) state = window.core.getState('player');
-            var streams = (state && state.streams) || [];
-            if (!streams.length) return null;
-            // Prefer a 1080p MP4/H.264 over anything else.
-            var best = null, bestRank = -1;
-            for (var i = 0; i < streams.length; i++) {
-                var s = streams[i];
-                if (!s || !(s.url || (s.deepLinks && s.deepLinks.player))) continue;
-                var t = streamText(s);
-                if (!isDirectPlayText(t)) continue;
-                var rank = 0;
-                if (/1080p/.test(t)) rank += 3; else if (/720p/.test(t)) rank += 2; else rank += 1;
-                if (STR.isMp4(t)) rank += 1;
-                if (STR.isH264(t)) rank += 1;
-                if (rank > bestRank) { bestRank = rank; best = s; }
+    // Direct-play finder (RT.core seam, P1.1): the real stream list is
+    // meta_details.addonStreams. getState is a Promise — the OLD code
+    // consumed it synchronously from the invalid 'streaming' field, so this
+    // finder always returned null and the card's one-tap switch never
+    // worked. Now each call kicks off an async refresh and returns the last
+    // cached pick synchronously (the card renders at stall time, after the
+    // coordinator's window has kept the cache warm).
+    var directPlayCache = null;
+
+    function flattenStreams(state) {
+        var streams = [];
+        if (state && Array.isArray(state.addonStreams)) {
+            for (var g = 0; g < state.addonStreams.length; g++) {
+                var content = state.addonStreams[g] && state.addonStreams[g].content;
+                if (Array.isArray(content)) {
+                    for (var c = 0; c < content.length; c++) streams.push(content[c]);
+                }
             }
-            return best;
-        } catch(e) { return null; }
+        }
+        return streams;
+    }
+
+    function pickDirectPlay(streams) {
+        if (!streams.length) return null;
+        // Prefer a 1080p MP4/H.264 over anything else.
+        var best = null, bestRank = -1;
+        for (var i = 0; i < streams.length; i++) {
+            var s = streams[i];
+            if (!s || !(s.url || (s.deepLinks && s.deepLinks.player))) continue;
+            var t = streamText(s);
+            if (!isDirectPlayText(t)) continue;
+            var rank = 0;
+            if (/1080p/.test(t)) rank += 3; else if (/720p/.test(t)) rank += 2; else rank += 1;
+            if (STR.isMp4(t)) rank += 1;
+            if (STR.isH264(t)) rank += 1;
+            if (rank > bestRank) { bestRank = rank; best = s; }
+        }
+        return best;
+    }
+
+    window.__findDirectPlayStream = function() {
+        if (!(RT.core && RT.core.getState)) return null;
+        RT.core.getState('meta_details').then(function(state) {
+            directPlayCache = pickDirectPlay(flattenStreams(state));
+        }).catch(function() {});
+        return directPlayCache;
     };
 
     // ── Navigate from the player back to the streams list (metadetails) for the
@@ -151,9 +175,10 @@
                 try {
                     if (direct.deepLinks && direct.deepLinks.player) {
                         window.location.hash = direct.deepLinks.player;
-                    } else if (window.core && window.core.dispatch) {
-                        window.core.dispatch({ action: 'StreamClicked', args: { stream: direct } });
                     } else {
+                        // No deepLink: no honest programmatic play exists (the
+                        // old 'StreamClicked' core action never existed
+                        // upstream) — send the user to the streams list.
                         window.__navigateToStreamsList(capturedPlayerHash);
                     }
                 } catch(e) { window.__navigateToStreamsList(capturedPlayerHash); }
@@ -239,7 +264,7 @@
             status.style.color = '#fbbf24';
             status.textContent = 'Checking ' + url.replace(/\/+$/, '') + ' …';
             saveBtn.disabled = true;
-            window.__probeStremioServer(url, function(res) {
+            RT.probeServer(url, function(res) {
                 saveBtn.disabled = false;
                 if (res.reachable) {
                     status.style.color = '#4ade80';

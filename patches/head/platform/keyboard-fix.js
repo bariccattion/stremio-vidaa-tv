@@ -30,9 +30,13 @@
             }
         } catch(e) {}
 
-        // Layer 2: Polling fallback (250ms — balanced for TV CPU)
+        // Layer 2: Polling fallback (250ms — balanced for TV CPU).
+        // Scheduler-owned since P1.4; the tick early-returns off #/search,
+        // so no route option is needed (and it must never fire during
+        // playback — quiet default is fine).
+        var RTk = window.__vidaaRuntime;
         var _prev = '';
-        setInterval(function() {
+        RTk.poll(function() {
             try {
                 var hash = window.location.hash || '';
                 if (hash.indexOf('#/search') !== 0) { _prev = ''; return; }

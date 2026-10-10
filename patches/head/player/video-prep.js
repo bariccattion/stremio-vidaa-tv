@@ -1,5 +1,6 @@
 /* Video element preparation — preload, playsInline, warm-up fetch,
- * dynamic preconnect, and early-stall auto-handoff.
+ * dynamic preconnect, and the stall strategies (detection itself lives in
+ * the kernel's playback-health coordinator since P1.2).
  *
  * Root cause summary (Jellyfin + Plex + Stremio #2055 all confirm this):
  * the VIDAA (Opera-based) browser does NOT use the hardware HEVC decoder
@@ -13,17 +14,19 @@
  *   2. playsInline               — avoid any fullscreen-transition delay
  *   3. preconnect to the actual stream host — RD CDN hostnames vary
  *      (xx-N.download.real-debrid.com) so the static hints in <head>
- *      can miss; we add a dynamic one once we see the real URL
+ *      can't miss; we add a dynamic one once we see the real URL
  *   4. HEAD/range warm-up fetch  — pull the first MB into the OS socket
  *      buffer before the video element asks for it, eliminating TLS
  *      slow-start on stream start
- *   5. early-stall auto-handoff  — if the browser <video> issues 2+
- *      `waiting` events in the first 20 seconds of playback, hand the
- *      stream to the native player. This catches the exact "5 seconds
- *      in, then stall forever" pattern reporters describe.
+ *   5. stall strategies on the kernel coordinator — when playback stalls
+ *      early (2+ waiting events in the first 20 s) and the user opted
+ *      into an auto-native mode, hand the stream to the native player;
+ *      otherwise, when the coordinator's inform phase fires, show the
+ *      heavy-choice card / honest advice.
  */
 (function() {
-    var log = window.__vidaaRuntime.logger('early-stall');
+    var RT = window.__vidaaRuntime;
+    var log = RT.logger('early-stall');
     var preconnectedOrigins = {};
     function addPreconnect(origin) {
         if (!origin || preconnectedOrigins[origin]) return;
@@ -62,61 +65,64 @@
         } catch(e) {}
     }
 
-    function armEarlyStallWatch(video) {
-        if (video.__earlyStallArmed) return;
-        video.__earlyStallArmed = true;
-        var playStart = 0;
-        var stalls = 0;
-        video.addEventListener('playing', function() {
-            if (!playStart) playStart = Date.now();
-        });
-        function onStall() {
-            if (!playStart) return;                   // never actually started
-            if (Date.now() - playStart > 20000) return; // only care about early stalls
-            stalls++;
-            log.warn('waiting/stalled event #' + stalls);
-            if (stalls >= 2 && typeof window.__launchNativePlayer === 'function') {
-                var inPlayer = (window.location.hash || '').indexOf('#/player/') === 0;
-                if (!inPlayer) return;
-                // Only auto-handoff when the user has opted into either auto-native
-                // mode. Otherwise log the hint and let the user handle it.
-                var allOn = window.__vidaaRuntime.store.getBool('stremio_auto_native_player', false);
-                var mkvOn = window.__vidaaRuntime.store.getBool('stremio_auto_native_player_mkv', false);
-                if (!allOn && !mkvOn) {
-                    log('stream is stalling; user has no auto-native toggle on — no silent handoff');
-                    // No auto-handoff path. Offer the user a CHOICE — never block,
-                    // skip, or auto-change the stream. Detect "too heavy" from the
-                    // probe data and/or the current source container.
-                    var srvUrlE = window.__STREMIO_SERVER_URL__ || '';
-                    var noServer = !srvUrlE || srvUrlE === 'http://127.0.0.1:11470';
-                    var si = window.__STREAM_INFO__ || {};
-                    var src = (video.currentSrc || video.src || '').toLowerCase();
-                    var tooHeavy = si.oversize === true
-                        || (si.width && si.width >= 3840) || (si.height && si.height >= 2160)
-                        || src.indexOf('.mkv') !== -1;
-                    // Prefer the richer, actionable choice card when it's enabled.
-                    if (tooHeavy && typeof window.__heavyChoiceCardEnabled === 'function' && window.__heavyChoiceCardEnabled()
-                        && typeof window.__showHeavyStreamChoiceCard === 'function') {
-                        window.__showHeavyStreamChoiceCard();
-                    } else if (noServer && typeof window.__honestStallEnabled === 'function' && window.__honestStallEnabled()
-                        && typeof window.__showHonestStallMessage === 'function') {
-                        // Fallback: the plain honest note (if the user turned the card off).
-                        window.__showHonestStallMessage();
-                    }
-                    return;
-                }
+    // ── Stall strategies (kernel playback-health, P1.2) ──────────────
+    // Detection used to live here (2+ waiting events in the first 20 s);
+    // now the coordinator owns it and this patch only declares how to
+    // RESPOND — one actor per stall episode instead of three racing ones.
+
+    // Recover: opt-in early-stall handoff to the native player. Only the
+    // FIRST invocation of an episode (a failed handoff must not retry
+    // every 8 s); later invocations decline so auto-rebuffer can claim.
+    if (RT.stall) {
+        RT.stall.register({
+            id: 'prep-handoff',
+            phase: 'recover',
+            priority: 300,
+            type: 'early',
+            when: function() {
+                return RT.store.getBool('stremio_auto_native_player', false)
+                    || RT.store.getBool('stremio_auto_native_player_mkv', false);
+            },
+            act: function(video, ep) {
+                if (ep.invocation !== 1) return false;
+                if (!window.__handoffAndRecover) return false;
                 log('2+ early stalls, handing off to native player');
                 try { video.pause(); } catch(e) {}
-                // H5: the wrapper acts on the VERIFIED result — on failure it
-                // best-effort resumes the browser video and advises; never a
-                // frozen, paused player.
-                if (window.__handoffAndRecover) {
-                    window.__handoffAndRecover(video, video.currentSrc || video.src);
-                }
+                window.__handoffAndRecover(video, video.currentSrc || video.src);
+                return true;
             }
-        }
-        video.addEventListener('waiting', onStall);
-        video.addEventListener('stalled', onStall);
+        });
+
+        // Inform: the guidance UI (no auto action left). The heavy-choice
+        // card when the stream analysis says "too heavy"; the honest note
+        // when there is no server either.
+        RT.stall.register({
+            id: 'prep-guidance',
+            phase: 'inform',
+            priority: 200,
+            type: '*',
+            act: function(video) {
+                var noServer = !RT.serverConfigured();
+                var si = window.__STREAM_INFO__ || {};
+                var src = (video.currentSrc || video.src || '').toLowerCase();
+                var tooHeavy = si.oversize === true
+                    || (si.width && si.width >= 3840) || (si.height && si.height >= 2160)
+                    || src.indexOf('.mkv') !== -1;
+                if (tooHeavy && typeof window.__heavyChoiceCardEnabled === 'function' && window.__heavyChoiceCardEnabled()
+                    && typeof window.__showHeavyStreamChoiceCard === 'function') {
+                    window.__showHeavyStreamChoiceCard();
+                    return true;
+                }
+                if (noServer && typeof window.__honestStallEnabled === 'function' && window.__honestStallEnabled()
+                    && typeof window.__showHonestStallMessage === 'function') {
+                    // tooHeavy drives the copy — a stalling 1080p MP4 is not
+                    // a 4K problem (P0.13).
+                    window.__showHonestStallMessage({ tooHeavy: tooHeavy });
+                    return true;
+                }
+                return false;
+            }
+        });
     }
 
     var seenSrcs = {};
@@ -136,7 +142,6 @@
             video.playsInline = true;
             video.setAttribute('playsinline', '');
         } catch(e) {}
-        armEarlyStallWatch(video);
 
         // Watch for src changes — the core may swap src multiple times per
         // player session (initial load, then the actual stream URL, then
@@ -170,19 +175,12 @@
     }
 
     document.querySelectorAll('video').forEach(prepareVideo);
-    var mo = new MutationObserver(function(muts) {
-        for (var i = 0; i < muts.length; i++) {
-            var added = muts[i].addedNodes || [];
-            for (var j = 0; j < added.length; j++) {
-                var n = added[j];
-                if (!n || n.nodeType !== 1) continue;
-                if (n.nodeName === 'VIDEO') prepareVideo(n);
-                var nested = (n.querySelectorAll ? n.querySelectorAll('video') : []);
-                for (var k = 0; k < nested.length; k++) prepareVideo(nested[k]);
-            }
-        }
-    });
-    mo.observe(document.documentElement, { childList: true, subtree: true });
+    // Attachment watching goes through the kernel's ONE MutationObserver
+    // since P1.6 (this patch used to own an always-on observer over the
+    // whole DOM); the per-video src poll below remains as belt-and-braces.
+    if (RT.dom && RT.dom.onVideoAdded) {
+        RT.dom.onVideoAdded(prepareVideo);
+    }
 
     window.__warmStreamHost = warmStreamHost;
 })();
